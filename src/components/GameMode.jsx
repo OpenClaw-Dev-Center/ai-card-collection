@@ -25,6 +25,31 @@ const MOVE_ICONS = {
   blitz: Wind
 };
 
+// Helper: Get provider ability from PROVIDERS
+const getProviderAbility = (providerKey) => {
+  if (!providerKey) return null;
+  const provider = PROVIDERS[providerKey];
+  return provider?.ability || null;
+};
+
+// Helper: Get ability icon component
+const getAbilityIcon = (iconName) => {
+  return ABILITY_ICONS[iconName] || Sparkles;
+};
+
+// Helper: Get ability color based on provider
+const getAbilityColor = (providerKey) => {
+  const colors = {
+    CLAUDE: '#f59e0b',
+    GPT: '#10b981',
+    GEMINI: '#3b82f6',
+    LLAMA: '#8b5cf6',
+    MISTRAL: '#ec4899',
+    DEEPSEEK: '#6366f1'
+  };
+  return colors[providerKey] || '#6b7280';
+};
+
 export function GameMode({ user, currency, onComplete, onBack }) {
   const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);
@@ -94,6 +119,8 @@ export function GameMode({ user, currency, onComplete, onBack }) {
     setFocusBonus(0);
     setOpponentFocusBonus(0);
     setMoveCooldowns({});
+    setPlayerMove(null);
+    setOpponentMove(null);
   };
 
   // Choose opponent move based on AI logic
@@ -668,9 +695,19 @@ export function GameMode({ user, currency, onComplete, onBack }) {
               <div className="flex-1">
                 <div className="font-bold text-lg">{opponentCard?.name}</div>
                 <div className="text-sm text-gray-400">{opponentCard?.provider}</div>
-                {providerAbility(opponentCard?.provider) && (
-                  <div className="text-xs text-yellow-400 mt-1">
-                    Ability: {providerAbility(opponentCard?.provider).name}
+                {getProviderAbility(opponentCard?.provider) && (
+                  <div className="mt-2 p-2 rounded-lg bg-gradient-to-r from-yellow-900/40 to-yellow-900/20 border border-yellow-600/30">
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const ability = getProviderAbility(opponentCard?.provider);
+                        const Icon = getAbilityIcon(ability?.icon);
+                        return Icon ? <Icon className="w-4 h-4 text-yellow-400" /> : null;
+                      })()}
+                      <div>
+                        <div className="text-xs text-yellow-300 font-semibold uppercase tracking-wide">Opponent Ability</div>
+                        <div className="text-sm text-yellow-100 font-bold">{getProviderAbility(opponentCard?.provider)?.name}</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -746,9 +783,19 @@ export function GameMode({ user, currency, onComplete, onBack }) {
               <div className="flex-1">
                 <div className="font-bold text-lg">{selectedCard?.name}</div>
                 <div className="text-sm text-gray-400">{selectedCard?.provider}</div>
-                {providerAbility(selectedCard?.provider) && (
-                  <div className="text-xs text-yellow-400 mt-1">
-                    Ability: {providerAbility(selectedCard?.provider).name}
+                {getProviderAbility(selectedCard?.provider) && (
+                  <div className="mt-2 p-2 rounded-lg bg-gradient-to-r from-yellow-900/40 to-yellow-900/20 border border-yellow-600/30">
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const ability = getProviderAbility(selectedCard?.provider);
+                        const Icon = getAbilityIcon(ability?.icon);
+                        return Icon ? <Icon className="w-4 h-4 text-yellow-400" /> : null;
+                      })()}
+                      <div>
+                        <div className="text-xs text-yellow-300 font-semibold uppercase tracking-wide">Unique Ability</div>
+                        <div className="text-sm text-yellow-100 font-bold">{getProviderAbility(selectedCard?.provider)?.name}</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -854,9 +901,43 @@ export function GameMode({ user, currency, onComplete, onBack }) {
           </div>
 
           {/* Turn Counter */}
-          <div className="text-center text-gray-400">
+          <div className="text-center text-gray-400 mb-4">
             Turn {turnCount} / 15
           </div>
+
+          {/* Ability Reference Panel */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gray-900/60 backdrop-blur rounded-2xl p-4 border border-gray-700/50"
+          >
+            <div className="text-center text-sm font-bold text-gray-300 mb-3">Provider Abilities Reference</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {Object.entries(PROVIDERS).map(([key, provider]) => {
+                const ability = provider.ability;
+                const Icon = getAbilityIcon(ability.icon);
+                const color = getAbilityColor(key);
+                return (
+                  <div
+                    key={key}
+                    className="p-3 rounded-xl border border-gray-700 bg-gradient-to-br from-gray-800/50 to-gray-900/50"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-2xl">{provider.icon}</span>
+                      <div className="text-sm font-bold text-gray-200">{provider.name}</div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color }} />
+                      <div className="text-xs text-gray-300">
+                        <div className="font-semibold mb-1" style={{ color }}>{ability.name}</div>
+                        <div className="text-gray-400 leading-tight">{ability.description}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
         </div>
       )}
 

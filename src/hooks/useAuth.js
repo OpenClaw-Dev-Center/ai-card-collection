@@ -26,30 +26,27 @@ export function useAuth() {
     if (users[username]) {
       return { success: false, error: 'User already exists' };
     }
-    users[username] = { password, createdAt: Date.now() };
+    users[username] = { password, createdAt: Date.now(), playtimeHours: 0 };
     localStorage.setItem('users', JSON.stringify(users));
     setUser(username);
     localStorage.setItem('currentUser', username);
 
-    // Give starting packs
+    // New accounts start with almost nothing - must play to earn
     const collection = [];
-    // Give 3 random starter cards (prefer Common/Rare, avoid low-tier duplicates too much)
-    const starterRarities = ['COMMON', 'COMMON', 'RARE'];
-    for (let i = 0; i < 3; i++) {
-      const rarity = starterRarities[i];
-      const eligible = CARD_POOL.filter(c => c.rarity === rarity);
-      const randomCard = eligible[Math.floor(Math.random() * eligible.length)];
-      if (randomCard) {
-        collection.push({
-          ...randomCard,
-          id: `${randomCard.baseId}-starter-${Date.now()}-${i}`
-        });
-      }
+
+    // Give 1 random Common card (the absolute basics)
+    const commonCards = CARD_POOL.filter(c => c.rarity === 'COMMON');
+    if (commonCards.length > 0) {
+      const randomCard = commonCards[Math.floor(Math.random() * commonCards.length)];
+      collection.push({
+        ...randomCard,
+        id: `${randomCard.baseId}-starter-${Date.now()}`
+      });
     }
 
     localStorage.setItem(`collection_${username}`, JSON.stringify(collection));
-    localStorage.setItem(`currency_${username}`, JSON.stringify(500));
-    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 2, premium: 0, mega: 0, legendary: 0 }));
+    localStorage.setItem(`currency_${username}`, JSON.stringify(0)); // No starting credits
+    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 0, premium: 0, mega: 0, legendary: 0 }));
     return { success: true };
   };
 

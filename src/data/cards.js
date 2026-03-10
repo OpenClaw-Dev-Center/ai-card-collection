@@ -147,9 +147,9 @@ export const PACK_TYPES = {
   BASIC: {
     name: 'Basic Pack',
     cost: 100,
-    cards: 5,
+    cards: 3, // Reduced from 5
     guaranteedRarity: 'COMMON',
-    probabilityOverrides: { MYTHIC: 0.005, LEGENDARY: 0.04, EPIC: 0.10, RARE: 0.25, COMMON: 0.605 }
+    probabilityOverrides: { MYTHIC: 0.001, LEGENDARY: 0.01, EPIC: 0.04, RARE: 0.20, COMMON: 0.749 } // Much lower high-rarity chances
   },
   PREMIUM: {
     name: 'Premium Pack',
@@ -176,3 +176,47 @@ export const PACK_TYPES = {
 
 // Full card pool
 export const CARD_POOL = generateCardPool();
+
+// Battle moves - each uses a specific stat and has unique effects
+export const MOVES = {
+  STRIKE: {
+    id: 'strike',
+    name: 'Strike',
+    icon: '⚡',
+    stat: 'power',
+    description: 'Attack with raw power. Deals damage based on Power.',
+    damageFactor: 0.5, // damage = stat * 0.5
+    defenseFactor: 1.0 // affected normally by defense
+  },
+  BLOCK: {
+    id: 'block',
+    name: 'Block',
+    icon: '🛡️',
+    stat: 'speed',
+    description: 'Take a defensive stance. Reduces incoming damage by 70% this turn.',
+    defenseReduction: 0.7
+  },
+  FOCUS: {
+    id: 'focus',
+    name: 'Focus',
+    icon: '🔮',
+    stat: 'intelligence',
+    description: 'Channel intelligence to power up your next Strike. Bonus scales with Intelligence.',
+    bonusFactor: 0.01 // bonus multiplier = int * 0.01 (i.e., 80 int = 0.8 = +80% damage)
+  },
+  BLITZ: {
+    id: 'blitz',
+    name: 'Blitz',
+    icon: '🌀',
+    stat: 'creativity',
+    description: 'A creative, unpredictable assault. Deals damage based on Creativity with 50% defense penetration.',
+    damageFactor: 0.45,
+    defensePenetration: 0.5 // ignores 50% of opponent's defense
+  }
+};
+
+// Helper to calculate starting HP from card stats
+export function calculateHP(card) {
+  const sum = Object.values(card.stats).reduce((a, b) => a + b, 0);
+  return Math.floor(100 + sum / 2); // e.g., sum 320 => HP 260
+}

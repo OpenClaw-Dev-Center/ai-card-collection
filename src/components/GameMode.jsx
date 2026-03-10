@@ -1,18 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Zap, Shield, Brain, Lightbulb, Swords, Trophy, Star, Coins } from 'lucide-react';
-import { CARD_POOL, RARITIES } from '../data/cards';
+import { ArrowLeft, Swords, Coins, Heart } from 'lucide-react';
+import { CARD_POOL, RARITIES, MOVES, calculateHP } from '../data/cards';
 
 export function GameMode({ user, currency, onComplete, onBack }) {
   const [collection, setCollection] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
-  const [battleState, setBattleState] = useState('setup'); // setup, playing, result
   const [opponentCard, setOpponentCard] = useState(null);
-  const [result, setResult] = useState(null);
-  const [wins, setWins] = useState(0);
-  const [damage, setDamage] = useState(0);
-  const [currentRound, setCurrentRound] = useState(1);
+  const [battleState, setBattleState] = useState('setup'); // 'setup', 'selecting', 'resolving', 'ended'
+  const [playerHP, setPlayerHP] = useState(0);
+  const [opponentHP, setOpponentHP] = useState(0);
+  const [maxHP, setMaxHP] = useState(200);
+  const [playerMove, setPlayerMove] = useState(null);
+  const [opponentMove, setOpponentMove] = useState(null);
+  const [playerBonus, setPlayerBonus] = useState(0);
+  const [opponentBonus, setOpponentBonus] = useState(0);
   const [battleLog, setBattleLog] = useState([]);
+  const [turn, setTurn] = useState(1);
+  const [maxTurns] = useState(10);
+  const [winner, setWinner] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [damageNumbers, setDamageNumbers] = useState([]);
 
   useEffect(() => {
     if (user) {
@@ -26,11 +34,11 @@ export function GameMode({ user, currency, onComplete, onBack }) {
 
   const getRandomOpponent = () => {
     if (collection.length === 0) {
-      // Fallback opponent
-      return CARD_POOL[Math.floor(Math.random() * CARD_POOL.length)];
+      const randomIdx = Math.floor(Math.random() * CARD_POOL.length);
+      return CARD_POOL[randomIdx];
     }
     const randomIdx = Math.floor(Math.random() * collection.length);
-    return collection[randomIdx];
+    return { ...collection[randomIdx] };
   };
 
   const startBattle = () => {
@@ -41,75 +49,217 @@ export function GameMode({ user, currency, onComplete, onBack }) {
 
     const opponent = getRandomOpponent();
     setOpponentCard(opponent);
-    setBattleState('playing');
-    setBattleLog([
-      { round: 1, text: `Battle started! Your ${selectedCard.name} vs ${opponent.name}` }
-    ]);
+
+    const playerMax = calculateHP(selectedCard);
+    const opponentMax = calculateHP(opponent);
+    setPlayerHP(playerMax);
+    setOpponentHP(opponentMax);
+    setMaxHP(Math.max(playerMax, opponentMax));
+
+    setBattleState('selecting');
+    setTurn(1);
+    setBattleLog([{ turn: 1, text: `Battle start! ${selectedCard.name} vs ${opponent.name}` }]);
+    setWinner(null);
+    setPlayerBonus(0);
+    setOpponentBonus(0);
+    setDamageNumbers([]);
   };
 
-  const resolveRound = (statType) => {
-    const playerStat = selectedCard.stats[statType];
-    const opponentStat = opponentCard.stats[statType];
+  const chooseOpponentMove = () => {
+    if (!opponentCard) return MOVES.STRIKE;
+    const r = Math.random();
+    // If opponent HP low, increase block chance
+    const blockThreshold = 0.2 + (1 - opponentHP / maxHP) * 0.5;
+    if (r < blockThreshold) return MOVES.BLOCK;
 
-    const playerTotal = playerStat + (Math.random() * 10 - 5);
-    const opponentTotal = opponentStat + (Math.random() * 10 - 5);
-    const playerWins = playerTotal > opponentTotal;
-    const damageDealt = Math.max(1, Math.floor(playerTotal - opponentTotal));
-    const damageTaken = Math.max(1, Math.floor(opponentTotal - playerTotal));
+    const { power, speed, intelligence, creativity } = opponentCard.stats;
+    const total = power + speed + intelligence + creativity;
+    const pStrike = power / total;
+    const pBlitz = creativity / total;
+    const pFocus = intelligence / total;
 
-    setDamage(prev => prev + (playerWins ? 0 : damageTaken));
+    const r2 = Math.random();
+    if (r2 < pStrike) return MOVES.STRIKE;
+    if (r2 < pStrike + pBlitz) return MOVES.BLITZ;
+    return MOVES.FOCUS;
+  };
 
-    const roundNum = battleLog.length;
-    setBattleLog(prev => [...prev, {
-      round: roundNum + 1,
-      text: `${statType.toUpperCase()}: Your ${playerStat.toFixed(0)} vs Opponent ${opponentStat.toFixed(0)} → ${playerWins ? 'You win!' : 'Opponent wins!'}`,
-      damage: playerWins ? 0 : damageTaken
-    }]);
+  const calculateDamage = (move, attacker, defender, defenderMove) => {
+    if (move.id === 'focus') return 0;
 
-    if (roundNum >= 3) {
-      // Battle ends after 3 rounds
-      const playerScore = battleLog.filter(l => l.text.includes('You win!')).length + (playerWins ? 1 : 0);
-      const opponentScore = 3 - playerScore;
+    let base;
+    if (move.id === 'strike') {
+      base = attacker.stats.power * move.damageFactor;
+    } else if (move.id === 'blitz') {
+      base = attacker.stats.creativity * move.damageFactor;
+    } else {
+      return 0;
+    }
 
-      setBattleState('result');
-      setResult(playerScore > opponentScore ? 'win' : 'loss');
+    const bonusMultiplier = (attacker === selectedCard ? playerBonus : opponentBonus);
+    base *= (1 + bonusMultiplier);
 
-      if (playerScore > opponentScore) {
-        setWins(prev => prev + 1);
-        const reward = 200 + (currentRound * 100) + (Math.random() > 0.5 ? 500 : 0);
-        onComplete(reward);
-        setBattleLog(prev => [...prev, { round: 5, text: `VICTORY! You earned ${reward} credits!`, isReward: true }]);
-      } else {
-        const consolation = 50;
-        onComplete(consolation);
-        setBattleLog(prev => [...prev, { round: 5, text: `Defeat... You earned ${consolation} consolation credits.`, isReward: false }]);
+    if (defenderMove && defenderMove.id === 'block') {
+      let reduction = MOVES.BLOCK.defenseReduction;
+      if (move.defensePenetration) {
+        reduction *= (1 - move.defensePenetration);
       }
+      base *= (1 - reduction);
+    }
+
+    return Math.max(1, Math.floor(base));
+  };
+
+  const handleMoveSelect = (move) => {
+    if (battleState !== 'selecting' || isProcessing) return;
+
+    setIsProcessing(true);
+    setPlayerMove(move);
+
+    const oppMove = chooseOpponentMove();
+    setOpponentMove(oppMove);
+
+    setTimeout(() => {
+      resolveTurn(move, oppMove);
+    }, 300);
+  };
+
+  const resolveTurn = (pMove, oMove) => {
+    const newOpponentHP = Math.max(0, opponentHP - calculateDamage(pMove, selectedCard, opponentCard, oMove));
+    const newPlayerHP = Math.max(0, playerHP - calculateDamage(oMove, opponentCard, selectedCard, pMove));
+
+    const newLog = [...battleLog];
+    const currentTurnNum = turn;
+
+    // Player action
+    if (pMove.id === 'strike' || pMove.id === 'blitz') {
+      const dmg = opponentHP - newOpponentHP;
+      newLog.push({
+        turn: currentTurnNum,
+        text: `You used ${pMove.name}! Dealt ${dmg} damage.`,
+        damage: dmg,
+        isPlayer: true
+      });
+      setPlayerBonus(0);
+    } else if (pMove.id === 'focus') {
+      newLog.push({
+        turn: currentTurnNum,
+        text: `You used ${pMove.name}. Next strike empowered!`,
+        isPlayer: true
+      });
+      const bonus = selectedCard.stats.intelligence * MOVES.FOCUS.bonusFactor;
+      setPlayerBonus(bonus);
+    } else if (pMove.id === 'block') {
+      newLog.push({
+        turn: currentTurnNum,
+        text: `You used ${pMove.name}. Defense active!`,
+        isPlayer: true
+      });
+    }
+
+    // Opponent action
+    if (oMove.id === 'strike' || oMove.id === 'blitz') {
+      const dmg = playerHP - newPlayerHP;
+      newLog.push({
+        turn: currentTurnNum,
+        text: `Opponent used ${oMove.name}! Dealt ${dmg} damage.`,
+        damage: dmg,
+        isPlayer: false
+      });
+      setOpponentBonus(0);
+    } else if (oMove.id === 'focus') {
+      newLog.push({
+        turn: currentTurnNum,
+        text: `Opponent used ${oMove.name}. Preparing a powerful move!`,
+        isPlayer: false
+      });
+      const bonus = opponentCard.stats.intelligence * MOVES.FOCUS.bonusFactor;
+      setOpponentBonus(bonus);
+    } else if (oMove.id === 'block') {
+      newLog.push({
+        turn: currentTurnNum,
+        text: `Opponent used ${oMove.name}. Defense active!`,
+        isPlayer: false
+      });
+    }
+
+    setPlayerHP(newPlayerHP);
+    setOpponentHP(newOpponentHP);
+    setBattleLog(newLog);
+
+    const damages = [];
+    const pDmg = opponentHP - newOpponentHP;
+    const oDmg = playerHP - newPlayerHP;
+    if (pDmg > 0) damages.push({ target: 'opponent', value: pDmg, x: '60%', y: '30%' });
+    if (oDmg > 0) damages.push({ target: 'player', value: oDmg, x: '40%', y: '70%' });
+    setDamageNumbers(damages);
+
+    // Check win conditions
+    if (newPlayerHP <= 0) {
+      setBattleState('ended');
+      setWinner('opponent');
+      setTimeout(() => finishBattle(50), 2000);
+    } else if (newOpponentHP <= 0) {
+      setBattleState('ended');
+      setWinner('player');
+      const reward = 200 + (currentTurnNum * 50) + (Math.random() > 0.7 ? 300 : 0);
+      setTimeout(() => finishBattle(reward), 2000);
+    } else if (currentTurnNum >= maxTurns) {
+      setBattleState('ended');
+      if (newPlayerHP > newOpponentHP) {
+        setWinner('player');
+        setTimeout(() => finishBattle(150), 2000);
+      } else if (newOpponentHP > newPlayerHP) {
+        setWinner('opponent');
+        setTimeout(() => finishBattle(50), 2000);
+      } else {
+        setWinner('draw');
+        setTimeout(() => finishBattle(100), 2000);
+      }
+    } else {
+      setTimeout(() => {
+        setTurn(prev => prev + 1);
+        setPlayerMove(null);
+        setOpponentMove(null);
+        setIsProcessing(false);
+      }, 500);
     }
   };
 
-  const nextRound = () => {
-    if (battleState === 'result') {
-      // Start new battle
-      setCurrentRound(prev => prev + 1);
-      setBattleState('setup');
-      setOpponentCard(null);
-      setResult(null);
-      setDamage(0);
-      setBattleLog([]);
-    } else if (battleState === 'playing') {
-      // Auto-resolve with lowest stat? No, wait for player
+  const finishBattle = (reward) => {
+    // Increment playtime by 0.1 hours (~6 minutes) per completed battle
+    const users = JSON.parse(localStorage.getItem('users') || '{}');
+    if (users[user]) {
+      users[user].playtimeHours = (users[user].playtimeHours || 0) + 0.1;
+      localStorage.setItem('users', JSON.stringify(users));
     }
+    onComplete(reward);
   };
 
-  const getStatIcon = (stat) => {
-    switch (stat) {
-      case 'power': return <Zap className="w-4 h-4" />;
-      case 'speed': return <Shield className="w-4 h-4" />;
-      case 'intelligence': return <Brain className="w-4 h-4" />;
-      case 'creativity': return <Lightbulb className="w-4 h-4" />;
-      default: return null;
-    }
+  const getMoveStyle = (move) => {
+    const base = "w-16 h-16 rounded-xl flex items-center justify-center text-2xl transition-all";
+    if (move.id === 'strike') return `${base} bg-red-900/50 border-2 border-red-500 hover:bg-red-800/70`;
+    if (move.id === 'block') return `${base} bg-blue-900/50 border-2 border-blue-500 hover:bg-blue-800/70`;
+    if (move.id === 'focus') return `${base} bg-purple-900/50 border-2 border-purple-500 hover:bg-purple-800/70`;
+    if (move.id === 'blitz') return `${base} bg-cyan-900/50 border-2 border-cyan-500 hover:bg-cyan-800/70`;
+    return base;
   };
+
+  const MoveButton = ({ move, disabled }) => (
+    <motion.button
+      whileHover={!disabled ? { scale: 1.05 } : {}}
+      whileTap={!disabled ? { scale: 0.95 } : {}}
+      disabled={disabled}
+      className={getMoveStyle(move)}
+      onClick={() => handleMoveSelect(move)}
+    >
+      <div className="text-center">
+        <div className="text-2xl mb-1">{move.icon}</div>
+        <div className="text-xs font-medium">{move.name}</div>
+        <div className="text-[10px] text-gray-400 mt-1 capitalize">{move.stat}</div>
+      </div>
+    </motion.button>
+  );
 
   if (collection.length === 0) {
     return (
@@ -136,9 +286,27 @@ export function GameMode({ user, currency, onComplete, onBack }) {
   }
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen p-6 relative">
+      <AnimatePresence>
+        {damageNumbers.map((dmg, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 1, y: 0, scale: 0.5 }}
+            animate={{ opacity: 0, y: -50, scale: 1.5 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1 }}
+            className="absolute text-4xl font-bold pointer-events-none"
+            style={{ left: dmg.x, top: dmg.y }}
+          >
+            <span className={dmg.target === 'player' ? 'text-red-500' : 'text-green-500'}>
+              -{dmg.value}
+            </span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
       {/* Header */}
-      <header className="max-w-4xl mx-auto flex items-center justify-between mb-8">
+      <header className="max-w-6xl mx-auto flex items-center justify-between mb-8">
         <motion.button
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -157,7 +325,7 @@ export function GameMode({ user, currency, onComplete, onBack }) {
           <h1 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-teal-400 bg-clip-text text-transparent">
             Battle Arena
           </h1>
-          <p className="text-sm text-gray-400">Round {currentRound} • Wins: {wins}</p>
+          <p className="text-sm text-gray-400">Turn {turn}/{maxTurns}</p>
         </motion.div>
 
         <div className="flex items-center gap-2 text-yellow-400">
@@ -166,21 +334,22 @@ export function GameMode({ user, currency, onComplete, onBack }) {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Player Card */}
-        <div className="lg:col-span-1">
+      {/* Battle Stage */}
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Player side */}
+        <div className="lg:col-span-1 space-y-6">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className="bg-gray-900/80 backdrop-blur rounded-2xl p-6 border border-gray-700"
           >
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Star className="w-5 h-5 text-yellow-400" />
+              <Heart className="w-5 h-5 text-red-400 fill-red-400" />
               Your Card
             </h2>
 
             {selectedCard && (
-              <div className="space-y-4">
+              <>
                 {/* Card preview */}
                 <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden border-2"
                   style={{ borderColor: selectedCard.rarityInfo.color }}>
@@ -197,30 +366,48 @@ export function GameMode({ user, currency, onComplete, onBack }) {
                   </div>
                 </div>
 
+                {/* HP Bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>HP</span>
+                    <span className="font-bold">{playerHP} / {maxHP}</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden">
+                    <motion.div
+                      key={playerHP}
+                      initial={{ width: '100%' }}
+                      animate={{ width: `${(playerHP / maxHP) * 100}%` }}
+                      transition={{ duration: 0.5 }}
+                      className="h-full bg-gradient-to-r from-red-600 to-red-400"
+                    />
+                  </div>
+                </div>
+
                 {/* Stats */}
-                <div className="space-y-2 bg-gray-800/50 rounded-xl p-4">
+                <div className="mt-3 grid grid-cols-2 gap-2 bg-gray-800/50 rounded-xl p-3 text-center text-xs">
                   {Object.entries(selectedCard.stats).map(([key, val]) => (
-                    <div key={key} className="flex items-center gap-3">
-                      {getStatIcon(key)}
-                      <span className="text-sm text-gray-400 capitalize w-24">{key}</span>
-                      <div className="flex-1 bg-gray-700 rounded-full h-2 overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${val}%`,
-                            background: `linear-gradient(90deg, ${selectedCard.rarityInfo.color}, ${selectedCard.providerInfo.color})`
-                          }}
-                        />
-                      </div>
-                      <span className="text-sm font-bold w-8 text-right">{val}</span>
+                    <div key={key} className="capitalize">
+                      <div className="text-gray-400">{key}</div>
+                      <div className="font-bold" style={{ color: selectedCard.providerInfo.color }}>{val}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Choose different card */}
-                {collection.length > 1 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-400 mb-2">Switch Card:</h4>
+                {/* Bonus indicator */}
+                {playerBonus > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-2 text-center text-purple-400 text-sm font-bold"
+                  >
+                    🔮 Power Up: +{Math.round(playerBonus*100)}%
+                  </motion.div>
+                )}
+
+                {/* Card switcher (only before battle) */}
+                {collection.length > 1 && battleState === 'setup' && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-400 mb-2">Switch Card</h4>
                     <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
                       {collection.map(card => (
                         <button
@@ -240,41 +427,67 @@ export function GameMode({ user, currency, onComplete, onBack }) {
                     </div>
                   </div>
                 )}
-              </div>
+
+                {/* Move buttons */}
+                {battleState === 'selecting' && (
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {Object.values(MOVES).map(move => (
+                      <MoveButton key={move.id} move={move} disabled={isProcessing} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Selected move display */}
+                {battleState === 'resolving' && playerMove && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 p-4 bg-gray-800/70 rounded-xl text-center"
+                  >
+                    <div className="text-sm text-gray-400">Your Move</div>
+                    <div className="text-2xl my-2">{playerMove.icon} {playerMove.name}</div>
+                    <div className="text-xs text-gray-400">{playerMove.description}</div>
+                  </motion.div>
+                )}
+              </>
             )}
           </motion.div>
         </div>
 
-        {/* Battle Area */}
+        {/* Center: Opponent & Battle */}
         <div className="lg:col-span-2">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-gray-900/80 backdrop-blur rounded-2xl p-6 border border-gray-700 h-full flex flex-col"
+            className="bg-gray-900/80 backdrop-blur rounded-2xl p-6 border border-gray-700 min-h-[500px] flex flex-col relative"
           >
             {/* Opponent */}
-            <div className="mb-8">
-              <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Swords className="w-5 h-5 text-red-400" />
-                Opponent
-              </h2>
-              {opponentCard ? (
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="relative w-48 aspect-[3/4] mx-auto rounded-xl overflow-hidden border-2 border-red-500/50"
-                >
-                  <img src={opponentCard.image} alt={opponentCard.name} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 text-center">
-                    <h3 className="font-bold">{opponentCard.name}</h3>
-                    <p className="text-sm text-gray-300">v{opponentCard.version}</p>
-                  </div>
-                </motion.div>
-              ) : (
-                <div className="w-48 aspect-[3/4] mx-auto bg-gray-800 rounded-xl flex items-center justify-center border-2 border-dashed border-gray-600">
-                  <span className="text-gray-500">???</span>
+            <div className="mb-8 flex flex-col items-center">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="relative w-48 aspect-[3/4] rounded-xl overflow-hidden border-2 border-red-500/50"
+              >
+                <img src={opponentCard?.image || ''} alt={opponentCard?.name} className="w-full h-full object-cover" />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 text-center">
+                  <h3 className="font-bold">{opponentCard?.name}</h3>
+                  <p className="text-sm text-gray-300">v{opponentCard?.version}</p>
                 </div>
-              )}
+                {/* Opponent HP */}
+                <div className="absolute top-0 left-0 right-0 p-2 bg-black/50">
+                  <div className="text-xs text-red-400 mb-1 flex justify-between">
+                    <span>Opponent HP</span>
+                    <span>{opponentHP}/{maxHP}</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-2">
+                    <motion.div
+                      key={opponentHP}
+                      animate={{ width: `${(opponentHP / maxHP) * 100}%` }}
+                      className="h-full bg-red-500"
+                    />
+                  </div>
+                </div>
+              </motion.div>
             </div>
 
             {/* Battle controls */}
@@ -283,86 +496,95 @@ export function GameMode({ user, currency, onComplete, onBack }) {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={startBattle}
-                className="w-full py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-xl font-bold text-xl shadow-lg flex items-center justify-center gap-2"
+                className="self-center py-4 px-8 bg-gradient-to-r from-red-600 to-orange-600 rounded-xl font-bold text-xl shadow-lg flex items-center gap-2"
               >
                 <Swords className="w-6 h-6" />
                 Start Battle!
               </motion.button>
             )}
 
-            {battleState === 'playing' && (
-              <div className="space-y-4">
-                <p className="text-center text-gray-400">Choose a stat to compete with!</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.keys(selectedCard.stats).map(stat => (
-                    <motion.button
-                      key={stat}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => resolveRound(stat)}
-                      disabled={battleState === 'result'}
-                      className="p-4 bg-gray-800 hover:bg-gray-700 rounded-xl border border-gray-600 flex items-center gap-3 transition-all"
-                    >
-                      {getStatIcon(stat)}
-                      <span className="font-bold capitalize">{stat}</span>
-                      <span className="ml-auto text-lg" style={{ color: selectedCard.rarityInfo.color }}>
-                        {selectedCard.stats[stat]}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
+            {/* Opponent move indicator */}
+            {battleState === 'resolving' && opponentMove && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="self-center mb-6 px-6 py-3 bg-gray-800/80 rounded-xl text-center border border-yellow-500/30"
+              >
+                <div className="text-sm text-gray-400">Opponent is using</div>
+                <div className="text-2xl my-1 text-yellow-400">{opponentMove.icon} {opponentMove.name}</div>
+                <div className="text-xs text-gray-400">{opponentMove.description}</div>
+              </motion.div>
             )}
 
-            {battleState === 'result' && (
+            {/* End overlay */}
+            {battleState === 'ended' && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center space-y-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm rounded-2xl"
               >
-                <div className={`text-4xl font-bold ${result === 'win' ? 'text-green-400' : 'text-red-400'}`}>
-                  {result === 'win' ? '🏆 VICTORY!' : '💀 DEFEAT'}
+                <div className="text-center p-8">
+                  <motion.div
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', stiffness: 200 }}
+                    className="text-8xl mb-4"
+                  >
+                    {winner === 'player' ? '🏆' : winner === 'opponent' ? '💀' : '🤝'}
+                  </motion.div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    {winner === 'player' ? 'VICTORY!' : winner === 'opponent' ? 'DEFEAT' : 'DRAW'}
+                  </h2>
+                  <p className="text-gray-300 mb-4">
+                    {winner === 'player' ? 'You triumphed!' : winner === 'opponent' ? 'You were defeated...' : 'It\'s a tie!'}
+                  </p>
+                  <p className="text-yellow-400 font-bold animate-pulse">
+                    Returning to dashboard...
+                  </p>
                 </div>
-                <p className="text-gray-300">
-                  {result === 'win'
-                    ? `You defeated ${opponentCard.name}!`
-                    : `${opponentCard.name} was too strong...`
-                  }
-                </p>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={nextRound}
-                  className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl font-bold"
-                >
-                  {currentRound < 5 ? 'Next Battle' : 'Finish'}
-                </motion.button>
               </motion.div>
             )}
 
             {/* Battle log */}
-            <div className="mt-6 flex-1 bg-gray-800/50 rounded-xl p-4 overflow-y-auto max-h-48">
+            <div className="mt-6 flex-1 bg-gray-800/50 rounded-xl p-4 overflow-y-auto max-h-64">
               <h3 className="text-sm font-bold text-gray-400 mb-2">Battle Log</h3>
               <div className="space-y-1 text-sm">
-                {battleLog.map((log, idx) => (
-                  <motion.div
-                    key={idx}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    className={`flex items-center gap-2 ${log.isReward ? 'text-green-400 font-bold' : 'text-gray-300'}`}
-                  >
-                    <span className="text-gray-500">[{log.round}]</span>
-                    <span>{log.text}</span>
-                    {log.damage > 0 && (
-                      <span className="text-red-400 ml-auto">-{log.damage} HP</span>
-                    )}
-                  </motion.div>
-                ))}
+                <AnimatePresence>
+                  {battleLog.map((log, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className={`flex items-center gap-2 ${log.isPlayer ? 'text-blue-300' : 'text-red-300'} ${log.damage ? 'font-bold' : ''}`}
+                    >
+                      <span className="text-gray-500">[T{log.turn}]</span>
+                      <span>{log.text}</span>
+                      {log.damage > 0 && (
+                        <span className={log.isPlayer ? 'text-red-400' : 'text-green-400'}>
+                          {log.isPlayer ? '❤️' : '💔'}-{log.damage}
+                        </span>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             </div>
           </motion.div>
         </div>
+      </div>
+
+      {/* Moves reference */}
+      <div className="max-w-6xl mx-auto mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+        {Object.values(MOVES).map(move => (
+          <div key={move.id} className="p-3 bg-gray-800/50 rounded-xl text-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">{move.icon}</span>
+              <span className="font-bold">{move.name}</span>
+            </div>
+            <div className="text-xs text-gray-400">{move.description}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

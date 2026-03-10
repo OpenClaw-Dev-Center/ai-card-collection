@@ -60,7 +60,10 @@ export function PackOpening({ pack, onComplete, user }) {
 
   const revealAll = () => {
     setSpeed(1);
-    setShowResult(true);
+    setShowResult(true); // Just reveal all, don't complete yet
+  };
+
+  const handleDone = () => {
     onComplete(cards);
   };
 
@@ -246,7 +249,7 @@ export function PackOpening({ pack, onComplete, user }) {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => onComplete(cards)}
+            onClick={handleDone}
             className="px-8 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-xl font-bold shadow-lg flex items-center gap-2"
           >
             <Crown className="w-5 h-5" />

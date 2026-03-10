@@ -4,7 +4,7 @@ import { ArrowLeft, Search, Filter, Grid3X3, Copy, ArrowUp, Lock } from 'lucide-
 import { Card } from './Card';
 import { RARITIES, VERSION_PROGRESSION, getDuplicatesRequired, getDuplicateCount, upgradeCardWithDupes } from '../data/cards';
 
-export function CardCollection({ user, onBack }) {
+export function CardCollection({ user, onBack, onXpGain = () => {} }) {
   const [collection, setCollection] = useState([]);
   const [search, setSearch] = useState('');
   const [rarityFilter, setRarityFilter] = useState('ALL');
@@ -60,6 +60,7 @@ export function CardCollection({ user, onBack }) {
     localStorage.setItem(`collection_${user}`, JSON.stringify(newCollection));
     setCollection(newCollection);
     setUpgradingCard(null);
+    onXpGain(20);
   };
 
   const statsTotal = (card) => Object.values(card.stats).reduce((a, b) => a + b, 0);

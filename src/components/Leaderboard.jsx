@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Trophy, Medal, TrendingUp, Clock, Swords } from 'lucide-react';
 
-export function Leaderboard({ user, onBack }) {
+export function Leaderboard({ user, unlockedFeatures = ['game'], onBack }) {
   const [users, setUsers] = useState([]);
   const [sortBy, setSortBy] = useState('active'); // active, wins, playtime
+
+  const leaderboardUnlocked = unlockedFeatures.includes('leaderboard');
 
   useEffect(() => {
     const allUsers = JSON.parse(localStorage.getItem('allUsers') || '{}');
@@ -119,13 +121,31 @@ export function Leaderboard({ user, onBack }) {
         ))}
       </motion.div>
 
+      {/* Lock banner when not visible on leaderboard */}
+      {!leaderboardUnlocked && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-4xl mx-auto mb-6 flex items-center gap-3 px-5 py-4 rounded-2xl bg-yellow-900/30 border border-yellow-700/50"
+        >
+          <span className="text-2xl">🔒</span>
+          <div>
+            <div className="font-bold text-yellow-300">You're not visible on the leaderboard yet</div>
+            <div className="text-sm text-yellow-500">Reach Level 8 to appear in the rankings.</div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Leaderboard List */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className="max-w-4xl mx-auto space-y-3"
       >
-        {users.slice(0, 50).map((player, index) => {
+        {users
+          .filter(p => leaderboardUnlocked || p.username !== user)
+          .slice(0, 50)
+          .map((player, index) => {
           const winRate = player.totalBattles > 0 ? player.wins / player.totalBattles : 0;
           const medal = getMedal(index);
           const isCurrentUser = player.username === user;

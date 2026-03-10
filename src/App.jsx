@@ -17,14 +17,21 @@ import { PackOpening } from './components/PackOpening';
 import { GameMode } from './components/GameMode';
 import { DeckBattle } from './components/DeckBattle';
 import { Leaderboard } from './components/Leaderboard';
+import { ExperienceRoad } from './components/ExperienceRoad';
 import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
 
 function App() {
   const { user, login, register, logout } = useAuth();
-  const { currency, packs, updateCurrency, updatePacks, prestigeCrystals, updatePrestigeCrystals } = useGame(user);
+  const {
+    currency, packs, updateCurrency, updatePacks,
+    prestigeCrystals, updatePrestigeCrystals,
+    xp, level, unlockedFeatures, claimedLevels, unclaimedCount,
+    addXp, claimReward,
+  } = useGame(user);
   const [view, setView] = useState(user ? 'dashboard' : 'auth');
-  const [openingPack, setOpeningPack] = useState(null);
+  // Track which pack key is being opened so we can deduct earned packs
+  const [openingPack, setOpeningPack] = useState(null); // { ...packType, packKey }
 
   useEffect(() => {
     if (user) {
@@ -34,31 +41,49 @@ function App() {
     }
   }, [user]);
 
-  const handlePackOpen = (packType) => {
-    if (currency >= packType.cost) {
-      setOpeningPack(packType);
+  const handlePackOpen = (packType, packKey) => {
+    if (packType.rewardOnly) {
+      if ((packs[packKey] || 0) > 0) {
+        setOpeningPack({ ...packType, packKey });
+        setView('pack-opening');
+      }
+    } else if (currency >= packType.cost) {
+      setOpeningPack({ ...packType, packKey });
       setView('pack-opening');
     }
   };
 
   const handlePackComplete = (newCards, crystalsEarned = 0) => {
+    const finishing = openingPack;
     setOpeningPack(null);
     setView('dashboard');
 
-    // Deduct cost
-    updateCurrency(-openingPack.cost);
+    if (finishing.rewardOnly) {
+      // Consume one earned pack token
+      updatePacks(finishing.packKey, -1);
+    } else {
+      // Deduct purchase cost
+      updateCurrency(-finishing.cost);
+    }
 
-    // Each non-prestige card is appended as its own entry.
     if (user) {
       const savedCollection = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
       const updatedCollection = [...savedCollection, ...newCards];
       localStorage.setItem(`collection_${user}`, JSON.stringify(updatedCollection));
     }
 
-    // Credit any prestige crystals earned from maxed-out pulls
     if (crystalsEarned > 0) {
       updatePrestigeCrystals(crystalsEarned);
     }
+  };
+
+  const navigateTo = (target) => {
+    if (target === 'deck-battle' && !unlockedFeatures.includes('deck-battle')) {
+      // Not yet unlocked – bounce back with a message handled in dashboard
+      setView('dashboard');
+      return;
+    }
+    setView(target);
   };
 
   const viewContent = () => {
@@ -72,27 +97,69 @@ function App() {
             currency={currency}
             packs={packs}
             prestigeCrystals={prestigeCrystals}
+            xp={xp}
+            level={level}
+            unclaimedCount={unclaimedCount}
+            unlockedFeatures={unlockedFeatures}
             onLogout={logout}
-            onNavigate={setView}
+            onNavigate={navigateTo}
             onPackOpen={handlePackOpen}
           />
         );
       case 'collection':
-        return <CardCollection user={user} onBack={() => setView('dashboard')} />;
+        return (
+          <CardCollection
+            user={user}
+            onBack={() => setView('dashboard')}
+            onXpGain={addXp}
+          />
+        );
       case 'game':
-        return <GameMode user={user} currency={currency} onComplete={(reward) => {
-          updateCurrency(reward);
-          updatePacks('basic', 1);
-          setView('dashboard');
-        }} onBack={() => setView('dashboard')} />;
+        return (
+          <GameMode
+            user={user}
+            currency={currency}
+            onComplete={(reward) => {
+              updateCurrency(reward);
+              updatePacks('basic', 1);
+              setView('dashboard');
+            }}
+            onBack={() => setView('dashboard')}
+            onXpGain={addXp}
+          />
+        );
       case 'deck-battle':
-        return <DeckBattle user={user} onComplete={(reward) => {
-          updateCurrency(reward);
-          updatePacks('premium', 1);
-          setView('dashboard');
-        }} onBack={() => setView('dashboard')} />;
+        return (
+          <DeckBattle
+            user={user}
+            onComplete={(reward) => {
+              updateCurrency(reward);
+              updatePacks('premium', 1);
+              setView('dashboard');
+            }}
+            onBack={() => setView('dashboard')}
+            onXpGain={addXp}
+          />
+        );
       case 'leaderboard':
-        return <Leaderboard user={user} onBack={() => setView('dashboard')} />;
+        return (
+          <Leaderboard
+            user={user}
+            unlockedFeatures={unlockedFeatures}
+            onBack={() => setView('dashboard')}
+          />
+        );
+      case 'experience':
+        return (
+          <ExperienceRoad
+            user={user}
+            xp={xp}
+            level={level}
+            claimedLevels={claimedLevels}
+            onClaimReward={claimReward}
+            onBack={() => setView('dashboard')}
+          />
+        );
       case 'pack-opening':
         return openingPack && (
           <PackOpening

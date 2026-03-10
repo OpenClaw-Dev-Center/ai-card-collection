@@ -21,8 +21,16 @@ function pickCard(pack, slotIndex) {
       chosenRarity = pack.guaranteedRarity;
     }
   }
-  const pool = CARD_POOL.filter(c => c.rarity === chosenRarity);
-  const base = pool[Math.floor(Math.random() * pool.length)];
+  const pool = CARD_POOL.filter(c => {
+    if (c.rarity !== chosenRarity) return false;
+    if (pack.providerFilter && pack.providerFilter.length > 0) {
+      return pack.providerFilter.includes(c.provider);
+    }
+    return true;
+  });
+  // Fallback to full rarity pool if providerFilter yields nothing
+  const finalPool = pool.length > 0 ? pool : CARD_POOL.filter(c => c.rarity === chosenRarity);
+  const base = finalPool[Math.floor(Math.random() * finalPool.length)];
   return { ...base, id: `${base.baseId}-${Date.now()}-${slotIndex}` };
 }
 

@@ -12,12 +12,36 @@ import {
   Zap as ZapIcon,
   Trophy as TrophyIcon,
   Swords as SwordsIcon,
-  Layers as LayersIcon
+  Layers as LayersIcon,
+  TrendingUp as TrendingUpIcon,
+  Lock as LockIcon,
+  Star as StarIcon
 } from 'lucide-react';
-import { PACK_TYPES } from '../data/cards';
+import { PACK_TYPES, xpForLevel, xpToNextLevel } from '../data/cards';
 
-export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogout, onNavigate, onPackOpen }) {
-  const packEntries = Object.entries(PACK_TYPES);
+export function Dashboard({
+  user, currency, packs, prestigeCrystals = 0,
+  xp = 0, level = 1, unclaimedCount = 0, unlockedFeatures = ['game'],
+  onLogout, onNavigate, onPackOpen,
+}) {
+  // Split packs into purchasable and earned reward packs
+  const purchasableEntries = Object.entries(PACK_TYPES).filter(([, p]) => !p.rewardOnly);
+  const earnedPackEntries = Object.entries(PACK_TYPES).filter(
+    ([key, p]) => p.rewardOnly && (packs[key.toLowerCase()] || 0) > 0
+  );
+
+  const deckBattleUnlocked = unlockedFeatures.includes('deck-battle');
+
+  // XP bar
+  const xpInLevel = xp - xpForLevel(level);
+  const xpNeeded = xpToNextLevel(level);
+  const xpPct = Math.min(100, Math.round((xpInLevel / xpNeeded) * 100));
+
+  // Total earned packs across all types
+  const totalEarnedPacks = Object.entries(packs).reduce((sum, [key]) => {
+    const pt = PACK_TYPES[key.toUpperCase()];
+    return pt ? sum + (packs[key] || 0) : sum;
+  }, 0);
 
   // Get user stats from localStorage
   const userStats = useMemo(() => {
@@ -33,13 +57,6 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
   const collection = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
   const collectionCount = collection.length;
   const totalWins = userStats.wins;
-  const playtimeHours = userStats.playtimeHours;
-
-  const formatPlaytime = (hours) => {
-    const h = Math.floor(hours);
-    const m = Math.round((hours % 1) * 60);
-    return `${h}h ${m}m`;
-  };
 
   return (
     <div className="min-h-screen p-6">
@@ -75,8 +92,13 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
             </div>
           )}
 
-          {/* User */}
+          {/* User + level */}
           <div className="flex items-center gap-3">
+            {/* Level badge */}
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-yellow-600/30 to-orange-600/30 px-3 py-1.5 rounded-full border border-yellow-600/30">
+              <StarIcon className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm font-bold text-yellow-300">Lv {level}</span>
+            </div>
             <div className="text-right">
               <div className="text-sm font-medium">{user}</div>
               <div className="text-xs text-green-400">● Online</div>
@@ -102,9 +124,27 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
           <div className="absolute inset-0 bg-grid-white/5" />
           <div className="relative z-10">
             <h2 className="text-3xl font-bold mb-2">Welcome back, {user}! 👋</h2>
-            <p className="text-gray-300 mb-6">
+            <p className="text-gray-300 mb-4">
               Collect AI models, battle through challenges, and upgrade your collection to legendary status.
             </p>
+
+            {/* XP Bar */}
+            <div className="mb-5">
+              <div className="flex items-center justify-between text-sm mb-1.5">
+                <span className="text-yellow-300 font-medium">Level {level}</span>
+                <span className="text-gray-400">{xpInLevel} / {xpNeeded} XP  ({xpPct}%)</span>
+                <span className="text-gray-400">Level {level + 1}</span>
+              </div>
+              <div className="h-2.5 bg-gray-800/70 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${xpPct}%` }}
+                  transition={{ duration: 1, ease: 'easeOut' }}
+                  className="h-full rounded-full bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500"
+                />
+              </div>
+            </div>
+
             <div className="flex gap-3 flex-wrap">
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -115,18 +155,26 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
                 <PlayIcon className="w-5 h-5" />
                 1v1 Battle
               </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => onNavigate('deck-battle')}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold shadow-lg"
-              >
-                <SwordsIcon className="w-5 h-5" />
-                Deck Battle
-              </motion.button>
+
+              {deckBattleUnlocked ? (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => onNavigate('deck-battle')}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold shadow-lg"
+                >
+                  <SwordsIcon className="w-5 h-5" />
+                  Deck Battle
+                </motion.button>
+              ) : (
+                <div className="flex items-center gap-2 px-6 py-3 bg-gray-700/60 rounded-xl font-bold text-gray-400 border border-gray-600/40 cursor-default select-none" title="Reach Level 3 to unlock">
+                  <LockIcon className="w-5 h-5" />
+                  Deck Battle
+                  <span className="text-xs bg-gray-600/60 px-2 py-0.5 rounded-full">Lv 3</span>
+                </div>
+              )}
             </div>
           </div>
-          {/* Decorative particles */}
           <div className="absolute top-4 right-4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
           <div className="absolute bottom-4 left-4 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl" />
         </motion.div>
@@ -140,7 +188,7 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
         >
           {[
             { label: 'Cards Owned', value: collectionCount.toString(), icon: GridIcon, color: 'from-blue-500 to-cyan-500' },
-            { label: 'Packs', value: (packs.basic + packs.premium + packs.mega + packs.legendary).toString(), icon: PackageIcon, color: 'from-purple-500 to-pink-500' },
+            { label: 'Earned Packs', value: totalEarnedPacks.toString(), icon: PackageIcon, color: 'from-purple-500 to-pink-500' },
             { label: 'Wins', value: totalWins.toString(), icon: TrophyIcon, color: 'from-yellow-500 to-orange-500' },
             { label: 'Prestige 💎', value: prestigeCrystals.toLocaleString(), icon: CrownIcon, color: 'from-indigo-500 to-purple-500' }
           ].map((stat, idx) => (
@@ -161,32 +209,30 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
           ))}
         </motion.div>
 
-        {/* Packs Section */}
+        {/* Packs Section – Purchasable */}
         <section>
           <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
             <PackageIcon className="w-6 h-6 text-purple-400" />
-            Available Packs
+            Pack Shop
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {packEntries.map(([key, pack]) => {
-              const ownedCount = packs[key.toLowerCase()];
+            {purchasableEntries.map(([key, pack]) => {
+              const ownedCount = packs[key.toLowerCase()] || 0;
+              const canAfford = currency >= pack.cost;
               return (
                 <motion.div
                   key={key}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ y: -5, boxShadow: `0 10px 30px -10px ${pack.probabilityOverrides?.MYTHIC ? '#ef4444' : '#8b5cf6'}40` }}
+                  whileHover={{ y: -5, boxShadow: `0 10px 30px -10px ${pack.probabilityOverrides?.MYTHIC > 0.05 ? '#ef4444' : '#8b5cf6'}40` }}
                   className="relative bg-gray-900/80 backdrop-blur rounded-2xl p-6 border border-gray-700/50 overflow-hidden group"
                 >
-                  {/* Pack gradient background */}
                   <div className="absolute inset-0 bg-gradient-to-br from-gray-800/50 to-gray-900/50 opacity-50" />
-
-                  {/* Pack count badge */}
-                  <div className="absolute top-4 right-4 bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-                    x{ownedCount}
-                  </div>
-
-                  {/* Pack image placeholder */}
+                  {ownedCount > 0 && (
+                    <div className="absolute top-4 right-4 bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                      x{ownedCount}
+                    </div>
+                  )}
                   <div className="relative z-10 mb-4 flex justify-center">
                     <motion.div
                       animate={{ y: [0, -5, 0] }}
@@ -196,30 +242,27 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
                       <PackageIcon className="w-12 h-12 text-white/80" />
                     </motion.div>
                   </div>
-
                   <div className="relative z-10 text-center">
                     <h4 className="font-bold text-lg mb-1">{pack.name}</h4>
                     <div className="text-sm text-gray-400 mb-4">
                       {pack.cards} cards • Guaranteed {pack.guaranteedRarity}
                     </div>
-
                     <div className="flex items-center justify-center gap-2 mb-4">
                       <WalletIcon className="w-4 h-4 text-yellow-400" />
                       <span className="font-bold text-yellow-300">{pack.cost.toLocaleString()}</span>
                     </div>
-
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => onPackOpen(pack)}
-                      disabled={currency < pack.cost}
+                      onClick={() => onPackOpen(pack, key.toLowerCase())}
+                      disabled={!canAfford}
                       className={`w-full py-2 px-4 rounded-xl font-medium transition-all ${
-                        currency >= pack.cost
+                        canAfford
                           ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
                           : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                       }`}
                     >
-                      {currency >= pack.cost ? 'Open Pack' : 'Not Enough'}
+                      {canAfford ? 'Open Pack' : 'Not Enough'}
                     </motion.button>
                   </div>
                 </motion.div>
@@ -227,6 +270,57 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
             })}
           </div>
         </section>
+
+        {/* Earned Reward Packs (show only if any owned) */}
+        {earnedPackEntries.length > 0 && (
+          <section>
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <SparklesIcon className="w-6 h-6 text-yellow-400" />
+              Reward Packs
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {earnedPackEntries.map(([key, pack]) => {
+                const ownedCount = packs[key.toLowerCase()] || 0;
+                return (
+                  <motion.div
+                    key={key}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    whileHover={{ y: -5 }}
+                    className="relative bg-gray-900/80 backdrop-blur rounded-2xl p-6 border border-yellow-700/40 overflow-hidden"
+                  >
+                    <div className="absolute top-4 right-4 bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                      x{ownedCount}
+                    </div>
+                    <div className="relative z-10 mb-4 flex justify-center">
+                      <motion.div
+                        animate={{ y: [0, -5, 0] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="w-24 h-32 bg-gradient-to-b from-yellow-600 via-orange-600 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/20"
+                      >
+                        <SparklesIcon className="w-12 h-12 text-white/80" />
+                      </motion.div>
+                    </div>
+                    <div className="relative z-10 text-center">
+                      <h4 className="font-bold text-lg mb-1">{pack.name}</h4>
+                      <div className="text-sm text-gray-400 mb-4">
+                        {pack.cards} cards • {pack.providerFilter?.join(' / ')} only
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => onPackOpen(pack, key.toLowerCase())}
+                        className="w-full py-2 px-4 rounded-xl font-medium bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-lg"
+                      >
+                        Open Pack
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Quick Actions */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -269,17 +363,23 @@ export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogou
             <p className="text-gray-400 text-sm">Classic card battle</p>
           </motion.button>
 
+          {/* Experience Road – with unclaimed badge */}
           <motion.button
             whileHover={{ scale: 1.02 }}
-            onClick={() => onNavigate('deck-battle')}
-            className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-purple-500/50 transition-all text-left group"
+            onClick={() => onNavigate('experience')}
+            className="relative bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-orange-500/50 transition-all text-left group"
           >
+            {unclaimedCount > 0 && (
+              <span className="absolute top-3 right-3 w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center z-10">
+                {unclaimedCount}
+              </span>
+            )}
             <div className="flex items-center justify-between mb-3">
-              <SwordsIcon className="w-8 h-8 text-purple-400" />
-              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+              <TrendingUpIcon className="w-8 h-8 text-orange-400" />
+              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-orange-400 group-hover:translate-x-1 transition-all" />
             </div>
-            <h3 className="text-xl font-bold mb-1">Deck Battle</h3>
-            <p className="text-gray-400 text-sm">Build a deck, activate synergies</p>
+            <h3 className="text-xl font-bold mb-1">Experience Road</h3>
+            <p className="text-gray-400 text-sm">Level rewards & unlocks</p>
           </motion.button>
         </section>
       </main>

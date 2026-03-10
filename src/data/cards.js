@@ -293,15 +293,91 @@ export const PACK_TYPES = {
   LEGENDARY: {
     name: 'Legendary Pack',
     cost: 10000,
-    cards: 5,
+    cards: 12,
     guaranteedRarity: 'LEGENDARY',
-    // ~1 in 20 Mythic
-    probabilityOverrides: { MYTHIC: 0.05, LEGENDARY: 0.35, EPIC: 0.35, RARE: 0.20, COMMON: 0.05 }
+    probabilityOverrides: { MYTHIC: 0.12, LEGENDARY: 0.45, EPIC: 0.30, RARE: 0.12, COMMON: 0.01 }
+  },
+  // ── Reward-only custom packs (cannot be purchased) ──────────────────────────
+  CLAUDE_PACK: {
+    name: 'Claude Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'RARE',
+    providerFilter: ['CLAUDE'],
+    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.08, EPIC: 0.20, RARE: 0.35, COMMON: 0.35 }
+  },
+  GPT_PACK: {
+    name: 'GPT Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'RARE',
+    providerFilter: ['GPT'],
+    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.08, EPIC: 0.20, RARE: 0.35, COMMON: 0.35 }
+  },
+  GEMINI_PACK: {
+    name: 'Gemini Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'RARE',
+    providerFilter: ['GEMINI'],
+    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.08, EPIC: 0.20, RARE: 0.35, COMMON: 0.35 }
+  },
+  OPENSOURCE_PACK: {
+    name: 'Open Source Pack',
+    cost: 0,
+    cards: 6,
+    rewardOnly: true,
+    guaranteedRarity: 'EPIC',
+    providerFilter: ['LLAMA', 'DEEPSEEK', 'MISTRAL'],
+    probabilityOverrides: { MYTHIC: 0.03, LEGENDARY: 0.12, EPIC: 0.30, RARE: 0.40, COMMON: 0.15 }
+  },
+  RIVALS_PACK: {
+    name: 'Rivals Pack',
+    cost: 0,
+    cards: 6,
+    rewardOnly: true,
+    guaranteedRarity: 'EPIC',
+    providerFilter: ['CLAUDE', 'GPT'],
+    probabilityOverrides: { MYTHIC: 0.04, LEGENDARY: 0.15, EPIC: 0.30, RARE: 0.35, COMMON: 0.16 }
   }
 };
 
 // Full card pool
 export const CARD_POOL = generateCardPool();
+
+// ── XP & Level system ────────────────────────────────────────────────────────
+// XP needed to go from level N to N+1: 150 * N
+// Cumulative XP to reach level N: 75 * (N-1) * N
+export function xpToNextLevel(level) { return 150 * level; }
+export function xpForLevel(level) { return 75 * (level - 1) * level; }
+export function levelFromXp(xp) {
+  // solve 75*(n-1)*n <= xp  =>  n^2 - n - xp/75 <= 0
+  return Math.max(1, Math.floor(0.5 + Math.sqrt(0.25 + xp / 75)));
+}
+
+// Level rewards.  'packs' keys must match PACK_TYPES keys (lowercase).
+// 'unlock' is written into unlockedFeatures set.
+export const LEVEL_REWARDS = {
+  2:  { label: 'First Steps',    packs: { basic: 2 } },
+  3:  { label: 'Strategist',     packs: { basic: 1 }, unlock: 'deck-battle', unlockLabel: '⚔️ Deck Battle Unlocked!' },
+  4:  { label: 'Rising Star',    packs: { premium: 1 } },
+  5:  { label: 'AI Devotee',     packs: { claude_pack: 1 } },
+  6:  { label: 'Pack Opener',    packs: { basic: 3 } },
+  7:  { label: 'Veteran',        packs: { premium: 2 } },
+  8:  { label: 'Champion',       packs: { mega: 1 }, unlock: 'leaderboard', unlockLabel: '🏆 Leaderboard Unlocked!' },
+  9:  { label: 'Innovator',      packs: { gpt_pack: 1 } },
+  10: { label: 'Elite Collector', packs: { mega: 2 } },
+  12: { label: 'Power Surge',    packs: { premium: 3 } },
+  14: { label: 'Transformer',    packs: { gemini_pack: 1 } },
+  15: { label: 'Legend',         packs: { legendary: 1 } },
+  18: { label: 'Open Source Hero', packs: { opensource_pack: 1 } },
+  20: { label: 'Rival Breaker',  packs: { legendary: 2, rivals_pack: 1 } },
+  25: { label: 'Mega Collector', packs: { mega: 5 } },
+  30: { label: 'Grand Master',   packs: { legendary: 3 } },
+};
 
 // Battle moves - each uses a specific stat and has unique effects
 export const MOVES = {

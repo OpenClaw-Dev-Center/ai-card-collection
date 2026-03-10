@@ -50,7 +50,7 @@ const getAbilityColor = (providerKey) => {
   return colors[providerKey] || '#6b7280';
 };
 
-export function GameMode({ user, currency, onComplete, onBack }) {
+export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => {} }) {
   const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
@@ -585,6 +585,7 @@ export function GameMode({ user, currency, onComplete, onBack }) {
   };
 
   const handleBattleComplete = () => {
+    onXpGain(winner === 'player' ? 75 : 10);
     onComplete(reward);
     onBack();
   };

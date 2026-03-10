@@ -362,7 +362,7 @@ function savePresets(user, presets) {
   localStorage.setItem(PRESET_KEY(user), JSON.stringify(presets));
 }
 
-export function DeckBattle({ user, onComplete, onBack }) {
+export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
   const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);
   const [phase, setPhase] = useState('build'); // build | reveal | battle | result
@@ -794,6 +794,7 @@ export function DeckBattle({ user, onComplete, onBack }) {
   };
 
   const handleComplete = () => {
+    onXpGain(winner === 'player' ? 120 : 15);
     onComplete(reward);
     onBack();
   };

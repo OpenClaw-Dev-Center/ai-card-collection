@@ -245,6 +245,7 @@ export const MOVES = {
     icon: '⚡',
     stat: 'power',
     description: 'Attack with raw power. Deals damage based on Power.',
+    energyCost: 25,
     damageFactor: 0.5, // damage = stat * 0.5
     defenseFactor: 1.0 // affected normally by defense
   },
@@ -254,6 +255,7 @@ export const MOVES = {
     icon: '🛡️',
     stat: 'speed',
     description: 'Take a defensive stance. Reduces incoming damage by 70% this turn.',
+    energyCost: 15,
     defenseReduction: 0.7
   },
   FOCUS: {
@@ -262,6 +264,7 @@ export const MOVES = {
     icon: '🔮',
     stat: 'intelligence',
     description: 'Channel intelligence to power up your next Strike. Bonus scales with Intelligence.',
+    energyCost: 20,
     bonusFactor: 0.01 // bonus multiplier = int * 0.01 (i.e., 80 int = 0.8 = +80% damage)
   },
   BLITZ: {
@@ -270,6 +273,7 @@ export const MOVES = {
     icon: '🌀',
     stat: 'creativity',
     description: 'A creative, unpredictable assault. Deals damage based on Creativity with 50% defense penetration.',
+    energyCost: 35,
     damageFactor: 0.45,
     defensePenetration: 0.5 // ignores 50% of opponent's defense
   }

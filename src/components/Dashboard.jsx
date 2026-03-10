@@ -219,6 +219,7 @@ export function Dashboard({
             {purchasableEntries.map(([key, pack]) => {
               const ownedCount = packs[key.toLowerCase()] || 0;
               const canAfford = currency >= pack.cost;
+              const canOpen = ownedCount > 0 || canAfford;
               return (
                 <motion.div
                   key={key}
@@ -255,14 +256,16 @@ export function Dashboard({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => onPackOpen(pack, key.toLowerCase())}
-                      disabled={!canAfford}
+                      disabled={!canOpen}
                       className={`w-full py-2 px-4 rounded-xl font-medium transition-all ${
-                        canAfford
-                          ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
+                        canOpen
+                          ? ownedCount > 0
+                            ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white shadow-lg'
+                            : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
                           : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                       }`}
                     >
-                      {canAfford ? 'Open Pack' : 'Not Enough'}
+                      {ownedCount > 0 ? `Open (${ownedCount} owned)` : canAfford ? 'Buy & Open' : 'Not Enough'}
                     </motion.button>
                   </div>
                 </motion.div>

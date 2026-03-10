@@ -42,13 +42,14 @@ function App() {
   }, [user]);
 
   const handlePackOpen = (packType, packKey) => {
-    if (packType.rewardOnly) {
-      if ((packs[packKey] || 0) > 0) {
-        setOpeningPack({ ...packType, packKey });
-        setView('pack-opening');
-      }
-    } else if (currency >= packType.cost) {
-      setOpeningPack({ ...packType, packKey });
+    const ownedCount = packs[packKey] || 0;
+    if (ownedCount > 0) {
+      // Consume a pre-owned copy (free — works for both reward-only and regular packs)
+      setOpeningPack({ ...packType, packKey, fromStock: true });
+      setView('pack-opening');
+    } else if (!packType.rewardOnly && currency >= packType.cost) {
+      // Buy fresh with currency
+      setOpeningPack({ ...packType, packKey, fromStock: false });
       setView('pack-opening');
     }
   };
@@ -58,11 +59,11 @@ function App() {
     setOpeningPack(null);
     setView('dashboard');
 
-    if (finishing.rewardOnly) {
-      // Consume one earned pack token
+    if (finishing.fromStock) {
+      // Consume one pre-owned pack token
       updatePacks(finishing.packKey, -1);
     } else {
-      // Deduct purchase cost
+      // Deduct purchase cost (no stock was used)
       updateCurrency(-finishing.cost);
     }
 

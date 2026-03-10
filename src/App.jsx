@@ -6,7 +6,6 @@ import { Dashboard } from './components/Dashboard';
 import { CardCollection } from './components/CardCollection';
 import { PackOpening } from './components/PackOpening';
 import { GameMode } from './components/GameMode';
-import { Leaderboard } from './components/Leaderboard';
 import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
 
@@ -77,8 +76,6 @@ function App() {
           updatePacks('basic', 1);
           setView('dashboard');
         }} onBack={() => setView('dashboard')} />;
-      case 'leaderboard':
-        return <Leaderboard />;
       case 'pack-opening':
         return openingPack && (
           <PackOpening

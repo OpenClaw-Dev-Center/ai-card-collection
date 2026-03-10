@@ -218,9 +218,27 @@ export function upgradeCardWithDupes(card, collection) {
     description: `${card.name} ${card.rarityInfo.name} edition - Version ${versionData.next}`
   };
 
+  // Also upgrade every remaining same-base+rarity copy (those not consumed as dupes)
   const newCollection = collection
     .filter(c => !toRemove.has(c.id))
-    .map(c => c.id === card.id ? upgradedCard : c);
+    .map(c => {
+      if (c.id === card.id) return upgradedCard;
+      // Propagate upgrade to remaining copies of the same base card
+      if (c.baseId === card.baseId && c.rarity === card.rarity) {
+        const cStats = { ...c.stats };
+        if (versionData.powerBoost) cStats.power += versionData.powerBoost;
+        if (versionData.speedBoost) cStats.speed += versionData.speedBoost;
+        if (versionData.intelligenceBoost) cStats.intelligence += versionData.intelligenceBoost;
+        if (versionData.creativityBoost) cStats.creativity += versionData.creativityBoost;
+        return {
+          ...c,
+          version: versionData.next,
+          stats: cStats,
+          description: `${c.name} ${c.rarityInfo.name} edition - Version ${versionData.next}`
+        };
+      }
+      return c;
+    });
 
   return { upgradedCard, newCollection };
 }

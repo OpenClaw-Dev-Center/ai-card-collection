@@ -457,8 +457,11 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
   // ── build phase helpers ──
   const toggleCardInDeck = (card) => {
     if (playerDeckSelection.find(c => c.id === card.id)) {
+      // Deselect
       setPlayerDeckSelection(prev => prev.filter(c => c.id !== card.id));
     } else if (playerDeckSelection.length < MAX_DECK) {
+      // Block if another card with the same base model is already in the deck
+      if (playerDeckSelection.find(c => c.baseId === card.baseId)) return;
       setPlayerDeckSelection(prev => [...prev, card]);
     }
   };
@@ -902,21 +905,36 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-1">
               {filteredSortedCollection.map(card => {
                 const selected = !!playerDeckSelection.find(c => c.id === card.id);
+                const sameBaseInDeck = !selected && !!playerDeckSelection.find(c => c.baseId === card.baseId);
+                const deckFull = !selected && playerDeckSelection.length >= MAX_DECK;
+                const disabled = sameBaseInDeck || deckFull;
                 const glow = glowForProvider(card.provider);
                 return (
                   <motion.div
                     key={card.id}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => toggleCardInDeck(card)}
-                    className={`relative p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                      selected ? 'border-green-500 bg-green-900/20' : 'border-gray-700 bg-gray-900/60 hover:border-gray-500'
+                    whileHover={!disabled ? { scale: 1.03 } : {}}
+                    whileTap={!disabled ? { scale: 0.97 } : {}}
+                    onClick={() => !disabled && toggleCardInDeck(card)}
+                    title={sameBaseInDeck ? 'Only one card per model allowed' : undefined}
+                    className={`relative p-3 rounded-xl border-2 transition-all ${
+                      selected
+                        ? 'border-green-500 bg-green-900/20 cursor-pointer'
+                        : sameBaseInDeck
+                          ? 'border-gray-700 bg-gray-900/40 opacity-40 cursor-not-allowed'
+                          : disabled
+                            ? 'border-gray-700 bg-gray-900/40 opacity-50 cursor-not-allowed'
+                            : 'border-gray-700 bg-gray-900/60 hover:border-gray-500 cursor-pointer'
                     }`}
                     style={selected ? { boxShadow: `0 0 12px ${glow}50` } : {}}
                   >
                     {selected && (
                       <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
                         <span className="text-xs text-white font-bold">✓</span>
+                      </div>
+                    )}
+                    {sameBaseInDeck && (
+                      <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-gray-600 rounded-full flex items-center justify-center" title="Duplicate model">
+                        <span className="text-xs text-gray-400 font-bold">✕</span>
                       </div>
                     )}
                     <div className="text-3xl mb-1">{card.providerInfo.icon}</div>

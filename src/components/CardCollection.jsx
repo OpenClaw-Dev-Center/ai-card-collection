@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Search, Filter, Grid3x3 } from 'lucide-react';
+import { ArrowLeft, Search, Filter, Grid3X3 } from 'lucide-react';
 import { Card } from './Card';
 import { CARD_POOL, RARITIES, VERSION_PROGRESSION, getUpgradeCost, upgradeCard } from '../data/cards';
 
@@ -164,7 +164,7 @@ export function CardCollection({ user, onBack }) {
             animate={{ opacity: 1 }}
             className="text-center py-20"
           >
-            <Grid3x3 className="w-16 h-16 mx-auto text-gray-600 mb-4" />
+            <Grid3X3 className="w-16 h-16 mx-auto text-gray-600 mb-4" />
             <h3 className="text-xl font-bold mb-2">Collection Empty</h3>
             <p className="text-gray-400">Open packs to start collecting AI models!</p>
           </motion.div>

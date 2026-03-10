@@ -1,16 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  Wallet as WalletIcon,
-  LogOut as LogOutIcon,
-  Play as PlayIcon,
-  Grid3x3 as GridIcon,
-  Package as PackageIcon,
-  Crown as CrownIcon,
-  ChevronRight as ChevronIcon,
-  Sparkles as SparklesIcon,
-  Zap as ZapIcon,
-  Trophy as TrophyIcon
+  Wallet, LogOut, Play, Grid3X3, Package, Crown,
+  ChevronRight, Sparkles, Zap, Trophy
 } from 'lucide-react';
 import { PACK_TYPES } from '../data/cards';
 
@@ -43,7 +35,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
           animate={{ x: 0, opacity: 1 }}
           className="flex items-center gap-3"
         >
-          <SparklesIcon className="w-8 h-8 text-yellow-400" />
+          <Sparkles className="w-8 h-8 text-yellow-400" />
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
             AI Card Collection
           </h1>
@@ -56,7 +48,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
         >
           {/* Currency */}
           <div className="flex items-center gap-2 bg-gradient-to-r from-yellow-600/30 to-orange-600/30 px-4 py-2 rounded-full border border-yellow-500/30">
-            <WalletIcon className="w-5 h-5 text-yellow-400" />
+            <Wallet className="w-5 h-5 text-yellow-400" />
             <span className="font-bold text-yellow-300">{currency.toLocaleString()}</span>
           </div>
 
@@ -71,7 +63,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
               className="p-2 hover:bg-red-500/20 rounded-full transition-colors group"
               title="Logout"
             >
-              <LogOutIcon className="w-5 h-5 text-gray-400 group-hover:text-red-400" />
+              <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-400" />
             </button>
           </div>
         </motion.div>
@@ -96,7 +88,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
               onClick={() => onNavigate('game')}
               className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 rounded-xl font-bold shadow-lg"
             >
-              <PlayIcon className="w-5 h-5" />
+              <Play className="w-5 h-5" />
               Play Now
             </motion.button>
           </div>
@@ -113,7 +105,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
           className="grid grid-cols-2 md:grid-cols-4 gap-4"
         >
           {[
-            { label: 'Cards Owned', value: collectionCount.toString(), icon: GridIcon, color: 'from-blue-500 to-cyan-500' },
+            { label: 'Cards Owned', value: collectionCount.toString(), icon: Grid3X3, color: 'from-blue-500 to-cyan-500' },
             { label: 'Packs', value: (packs.basic + packs.premium + packs.mega + packs.legendary).toString(), icon: Package, color: 'from-purple-500 to-pink-500' },
             { label: 'Wins', value: totalWins.toString(), icon: Trophy, color: 'from-yellow-500 to-orange-500' },
             { label: 'Playtime', value: formatPlaytime(playtimeHours), icon: Crown, color: 'from-green-500 to-teal-500' }
@@ -148,7 +140,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             onClick={() => onNavigate('collection')}
             className="bg-gradient-to-r from-blue-600/80 to-cyan-600/80 hover:from-blue-600 hover:to-cyan-600 backdrop-blur rounded-2xl p-6 border border-blue-500/30 text-left transition-all"
           >
-            <GridIcon className="w-8 h-8 text-blue-300 mb-2" />
+            <Grid3X3 className="w-8 h-8 text-blue-300 mb-2" />
             <div className="font-bold text-lg">Collection</div>
             <div className="text-sm text-blue-200">View & upgrade cards</div>
           </motion.button>
@@ -159,13 +151,13 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             onClick={() => onNavigate('leaderboard')}
             className="bg-gradient-to-r from-yellow-600/80 to-orange-600/80 hover:from-yellow-600 hover:to-orange-600 backdrop-blur rounded-2xl p-6 border border-yellow-500/30 text-left transition-all"
           >
-            <TrophyIcon className="w-8 h-8 text-yellow-300 mb-2" />
+            <Trophy className="w-8 h-8 text-yellow-300 mb-2" />
             <div className="font-bold text-lg">Leaderboard</div>
             <div className="text-sm text-yellow-200">See top players</div>
           </motion.button>
 
           <div className="bg-gradient-to-r from-green-600/80 to-teal-600/80 backdrop-blur rounded-2xl p-6 border border-green-500/30">
-            <PlayIcon className="w-8 h-8 text-green-300 mb-2" />
+            <Play className="w-8 h-8 text-green-300 mb-2" />
             <div className="font-bold text-lg">Battle</div>
             <div className="text-sm text-green-200">Fight with your cards</div>
             <motion.button
@@ -182,7 +174,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
         {/* Packs Section */}
         <section>
           <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <PackageIcon className="w-6 h-6 text-purple-400" />
+            <Package className="w-6 h-6 text-purple-400" />
             Available Packs
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -211,7 +203,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
                       transition={{ duration: 2, repeat: Infinity }}
                       className="w-24 h-32 bg-gradient-to-b from-purple-600 via-pink-600 to-orange-600 rounded-xl flex items-center justify-center shadow-lg"
                     >
-                      <PackageIcon className="w-12 h-12 text-white/80" />
+                      <Package className="w-12 h-12 text-white/80" />
                     </motion.div>
                   </div>
 
@@ -222,7 +214,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
                     </div>
 
                     <div className="flex items-center justify-center gap-2 mb-4">
-                      <WalletIcon className="w-4 h-4 text-yellow-400" />
+                      <Wallet className="w-4 h-4 text-yellow-400" />
                       <span className="font-bold text-yellow-300">{pack.cost.toLocaleString()}</span>
                     </div>
 
@@ -254,8 +246,8 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-blue-500/50 transition-all text-left group"
           >
             <div className="flex items-center justify-between mb-3">
-              <GridIcon className="w-8 h-8 text-blue-400" />
-              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+              <Grid3X3 className="w-8 h-8 text-blue-400" />
+              <ChevronRight className="w-6 h-6 text-gray-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
             </div>
             <h3 className="text-xl font-bold mb-1">My Collection</h3>
             <p className="text-gray-400 text-sm">View and manage all your AI model cards</p>
@@ -267,8 +259,8 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-green-500/50 transition-all text-left group"
           >
             <div className="flex items-center justify-between mb-3">
-              <TrophyIcon className="w-8 h-8 text-green-400" />
-              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-green-400 group-hover:translate-x-1 transition-all" />
+              <Trophy className="w-8 h-8 text-green-400" />
+              <ChevronRight className="w-6 h-6 text-gray-500 group-hover:text-green-400 group-hover:translate-x-1 transition-all" />
             </div>
             <h3 className="text-xl font-bold mb-1">Play Game</h3>
             <p className="text-gray-400 text-sm">Battle AI models to earn packs and currency</p>
@@ -279,8 +271,8 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-yellow-500/50 transition-all text-left group"
           >
             <div className="flex items-center justify-between mb-3">
-              <CrownIcon className="w-8 h-8 text-yellow-400" />
-              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-yellow-400 group-hover:translate-x-1 transition-all" />
+              <Crown className="w-8 h-8 text-yellow-400" />
+              <ChevronRight className="w-6 h-6 text-gray-500 group-hover:text-yellow-400 group-hover:translate-x-1 transition-all" />
             </div>
             <h3 className="text-xl font-bold mb-1">Leaderboard</h3>
             <p className="text-gray-400 text-sm">Compete with other players (coming soon)</p>

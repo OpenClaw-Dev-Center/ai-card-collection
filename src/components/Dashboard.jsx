@@ -10,7 +10,9 @@ import {
   ChevronRight as ChevronIcon,
   Sparkles as SparklesIcon,
   Zap as ZapIcon,
-  Trophy as TrophyIcon
+  Trophy as TrophyIcon,
+  Swords as SwordsIcon,
+  Layers as LayersIcon
 } from 'lucide-react';
 import { PACK_TYPES } from '../data/cards';
 
@@ -95,15 +97,26 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             <p className="text-gray-300 mb-6">
               Collect AI models, battle through challenges, and upgrade your collection to legendary status.
             </p>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onNavigate('game')}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 rounded-xl font-bold shadow-lg"
-            >
-              <PlayIcon className="w-5 h-5" />
-              Play Now
-            </motion.button>
+            <div className="flex gap-3 flex-wrap">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onNavigate('game')}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 rounded-xl font-bold shadow-lg"
+              >
+                <PlayIcon className="w-5 h-5" />
+                1v1 Battle
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onNavigate('deck-battle')}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold shadow-lg"
+              >
+                <SwordsIcon className="w-5 h-5" />
+                Deck Battle
+              </motion.button>
+            </div>
           </div>
           {/* Decorative particles */}
           <div className="absolute top-4 right-4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
@@ -208,7 +221,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
         </section>
 
         {/* Quick Actions */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <motion.button
             whileHover={{ scale: 1.02 }}
             onClick={() => onNavigate('collection')}
@@ -244,8 +257,21 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
               <PlayIcon className="w-8 h-8 text-green-400" />
               <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-green-400 group-hover:translate-x-1 transition-all" />
             </div>
-            <h3 className="text-xl font-bold mb-1">Battle</h3>
-            <p className="text-gray-400 text-sm">Fight with your cards</p>
+            <h3 className="text-xl font-bold mb-1">1v1 Battle</h3>
+            <p className="text-gray-400 text-sm">Classic card battle</p>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            onClick={() => onNavigate('deck-battle')}
+            className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-purple-500/50 transition-all text-left group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <SwordsIcon className="w-8 h-8 text-purple-400" />
+              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+            </div>
+            <h3 className="text-xl font-bold mb-1">Deck Battle</h3>
+            <p className="text-gray-400 text-sm">Build a deck, activate synergies</p>
           </motion.button>
         </section>
       </main>

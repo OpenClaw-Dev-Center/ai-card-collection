@@ -15,6 +15,7 @@ import { Dashboard } from './components/Dashboard';
 import { CardCollection } from './components/CardCollection';
 import { PackOpening } from './components/PackOpening';
 import { GameMode } from './components/GameMode';
+import { DeckBattle } from './components/DeckBattle';
 import { Leaderboard } from './components/Leaderboard';
 import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
@@ -84,6 +85,12 @@ function App() {
         return <GameMode user={user} currency={currency} onComplete={(reward) => {
           updateCurrency(reward);
           updatePacks('basic', 1);
+          setView('dashboard');
+        }} onBack={() => setView('dashboard')} />;
+      case 'deck-battle':
+        return <DeckBattle user={user} onComplete={(reward) => {
+          updateCurrency(reward);
+          updatePacks('premium', 1);
           setView('dashboard');
         }} onBack={() => setView('dashboard')} />;
       case 'leaderboard':

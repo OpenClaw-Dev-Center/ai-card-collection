@@ -22,7 +22,7 @@ import { useGame } from './hooks/useGame';
 
 function App() {
   const { user, login, register, logout } = useAuth();
-  const { currency, packs, updateCurrency, updatePacks } = useGame(user);
+  const { currency, packs, updateCurrency, updatePacks, prestigeCrystals, updatePrestigeCrystals } = useGame(user);
   const [view, setView] = useState(user ? 'dashboard' : 'auth');
   const [openingPack, setOpeningPack] = useState(null);
 
@@ -41,19 +41,23 @@ function App() {
     }
   };
 
-  const handlePackComplete = (newCards) => {
+  const handlePackComplete = (newCards, crystalsEarned = 0) => {
     setOpeningPack(null);
     setView('dashboard');
 
     // Deduct cost
     updateCurrency(-openingPack.cost);
 
-    // Each card from the pack is appended as its own entry (duplicates intentional —
-    // the upgrade system consumes duplicate copies of the same baseId+rarity).
+    // Each non-prestige card is appended as its own entry.
     if (user) {
       const savedCollection = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
       const updatedCollection = [...savedCollection, ...newCards];
       localStorage.setItem(`collection_${user}`, JSON.stringify(updatedCollection));
+    }
+
+    // Credit any prestige crystals earned from maxed-out pulls
+    if (crystalsEarned > 0) {
+      updatePrestigeCrystals(crystalsEarned);
     }
   };
 
@@ -67,6 +71,7 @@ function App() {
             user={user}
             currency={currency}
             packs={packs}
+            prestigeCrystals={prestigeCrystals}
             onLogout={logout}
             onNavigate={setView}
             onPackOpen={handlePackOpen}

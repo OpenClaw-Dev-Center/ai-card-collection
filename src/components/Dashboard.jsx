@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { PACK_TYPES } from '../data/cards';
 
-export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackOpen }) {
+export function Dashboard({ user, currency, packs, prestigeCrystals = 0, onLogout, onNavigate, onPackOpen }) {
   const packEntries = Object.entries(PACK_TYPES);
 
   // Get user stats from localStorage
@@ -66,6 +66,14 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             <WalletIcon className="w-5 h-5 text-yellow-400" />
             <span className="font-bold text-yellow-300">{currency.toLocaleString()}</span>
           </div>
+
+          {/* Prestige crystals */}
+          {prestigeCrystals > 0 && (
+            <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-600/30 to-purple-600/30 px-4 py-2 rounded-full border border-indigo-500/30">
+              <span className="text-base">💎</span>
+              <span className="font-bold text-indigo-300">{prestigeCrystals.toLocaleString()}</span>
+            </div>
+          )}
 
           {/* User */}
           <div className="flex items-center gap-3">
@@ -134,7 +142,7 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
             { label: 'Cards Owned', value: collectionCount.toString(), icon: GridIcon, color: 'from-blue-500 to-cyan-500' },
             { label: 'Packs', value: (packs.basic + packs.premium + packs.mega + packs.legendary).toString(), icon: PackageIcon, color: 'from-purple-500 to-pink-500' },
             { label: 'Wins', value: totalWins.toString(), icon: TrophyIcon, color: 'from-yellow-500 to-orange-500' },
-            { label: 'Playtime', value: formatPlaytime(playtimeHours), icon: CrownIcon, color: 'from-green-500 to-teal-500' }
+            { label: 'Prestige 💎', value: prestigeCrystals.toLocaleString(), icon: CrownIcon, color: 'from-indigo-500 to-purple-500' }
           ].map((stat, idx) => (
             <motion.div
               key={stat.label}

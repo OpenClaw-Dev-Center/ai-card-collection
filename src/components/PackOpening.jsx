@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Crown, Star, Zap } from 'lucide-react';
-import { CARD_POOL, RARITIES, PACK_TYPES } from '../data/cards';
+import { CARD_POOL, RARITIES, PACK_TYPES, PRESTIGE_CRYSTAL_VALUES, VERSION_PROGRESSION } from '../data/cards';
 
 // ── Rarity-weighted card picker ──────────────────────────────────────────────
 function pickCard(pack, slotIndex) {
@@ -88,15 +88,26 @@ function CinematicReveal({ card, onDone }) {
         initial={{ scale: 0, rotate: -15, opacity: 0 }}
         animate={{ scale: 1, rotate: 0, opacity: 1 }}
         transition={{ delay: 0.3, type: 'spring', stiffness: 180, damping: 14 }}
-        className="relative z-10 w-52 h-72 rounded-2xl overflow-hidden border-4 shadow-2xl"
+        className="relative z-10 w-52 h-72 rounded-2xl overflow-hidden border-4 shadow-2xl flex flex-col items-center justify-between"
         style={{
           borderColor: color,
-          boxShadow: `0 0 60px ${color}80, 0 0 120px ${color}40`
+          boxShadow: `0 0 60px ${color}80, 0 0 120px ${color}40`,
+          background: `linear-gradient(135deg, ${color}30 0%, #0f0f23 100%)`
         }}
       >
-        <img src={card.image} alt={card.name} className="w-full h-full object-cover" />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.85) 100%)' }} />
-        <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
+        {/* Icon */}
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-8xl drop-shadow-lg">{card.providerInfo.icon}</span>
+        </div>
+        {/* Stats */}
+        <div className="px-4 pb-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-300 w-full">
+          <span>💥 {card.stats.power}</span>
+          <span>⚡ {card.stats.speed}</span>
+          <span>🧠 {card.stats.intelligence}</span>
+          <span>✨ {card.stats.creativity}</span>
+        </div>
+        {/* Name / rarity */}
+        <div className="p-4 text-center w-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
           <div className="font-black text-xl text-white drop-shadow-lg">{card.name}</div>
           <div className="text-sm opacity-80">{card.provider} · v{card.version}</div>
           <div className="mt-1 inline-block px-3 py-0.5 rounded-full text-xs font-black" style={{ background: color }}>
@@ -153,6 +164,9 @@ export function PackOpening({ pack, onComplete, user }) {
   // Cinematic reveal queue: indices of legendary/mythic cards waiting to be shown
   const [cinematicQueue, setCinematicQueue] = useState([]);
   const [currentCinematic, setCurrentCinematic] = useState(null); // card object
+  // Prestige conversion tracking
+  const [convertedIndices, setConvertedIndices] = useState(new Set());
+  const [totalPrestigeCrystals, setTotalPrestigeCrystals] = useState(0);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -176,10 +190,27 @@ export function PackOpening({ pack, onComplete, user }) {
   const revealAll = () => {
     setSpeed(1);
     setShowResult(true);
-    // Queue cinematic reveals for legendary/mythic
+
+    // Check which pulled cards are already maxed in the player's collection
+    const collection = user ? JSON.parse(localStorage.getItem(`collection_${user}`) || '[]') : [];
+    let crystals = 0;
+    const converted = new Set();
+    cards.forEach((card, i) => {
+      const hasMaxed = collection.some(
+        c => c.baseId === card.baseId && c.rarity === card.rarity && !VERSION_PROGRESSION[c.version]
+      );
+      if (hasMaxed) {
+        converted.add(i);
+        crystals += PRESTIGE_CRYSTAL_VALUES[card.rarity] || 0;
+      }
+    });
+    setConvertedIndices(converted);
+    setTotalPrestigeCrystals(crystals);
+
+    // Queue cinematic reveals only for non-converted legendary/mythic
     const queue = cards
       .map((c, i) => ({ card: c, index: i }))
-      .filter(({ card }) => card.rarity === 'LEGENDARY' || card.rarity === 'MYTHIC');
+      .filter(({ card, index }) => !converted.has(index) && (card.rarity === 'LEGENDARY' || card.rarity === 'MYTHIC'));
     if (queue.length > 0) {
       setCinematicQueue(queue.map(q => q.card));
       setCurrentCinematic(queue[0].card);
@@ -192,11 +223,56 @@ export function PackOpening({ pack, onComplete, user }) {
     setCurrentCinematic(next.length > 0 ? next[0] : null);
   };
 
-  const handleDone = () => onComplete(cards);
+  const handleDone = () => {
+    const keptCards = cards.filter((_, i) => !convertedIndices.has(i));
+    onComplete(keptCards, totalPrestigeCrystals);
+  };
 
   // Card reveal component ──────────────────────────────────────────────────────
-  const CardReveal = ({ card, index, isRevealed }) => {
+  const CardReveal = ({ card, index, isRevealed, isConverted, crystalAmount }) => {
     const isSpecial = card.rarity === 'LEGENDARY' || card.rarity === 'MYTHIC';
+
+    // Prestige tile — shown when a maxed copy was already owned
+    if (isConverted && isRevealed) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8, y: 50 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: index * (0.1 / speed), type: 'spring', stiffness: 300 }}
+          className="relative w-48 h-64 md:w-56 md:h-80"
+        >
+          <div
+            className="w-full h-full rounded-2xl overflow-hidden border-2 flex flex-col items-center justify-center gap-2 text-center p-4"
+            style={{
+              background: 'linear-gradient(135deg, #4c1d9530 0%, #1e1b4b 100%)',
+              borderColor: '#818cf8',
+              boxShadow: '0 0 30px #818cf860, inset 0 0 20px rgba(0,0,0,0.4)'
+            }}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.2, 1], rotate: [0, 12, -12, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="text-5xl"
+            >💎</motion.div>
+            <div className="text-indigo-300 text-xs font-bold uppercase tracking-widest">Prestige</div>
+            <motion.div
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="text-2xl font-black text-white"
+            >+{crystalAmount}</motion.div>
+            <div className="text-indigo-400 text-xs">Crystals</div>
+            <div
+              className="mt-1 px-2 py-0.5 rounded-full text-xs font-bold"
+              style={{ background: card.rarityInfo.color + '30', color: card.rarityInfo.color, border: `1px solid ${card.rarityInfo.color}50` }}
+            >
+              {card.rarityInfo.name} maxed
+            </div>
+            <div className="text-xs text-gray-500">{card.name}</div>
+          </div>
+        </motion.div>
+      );
+    }
+
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.8, y: 50 }}
@@ -216,13 +292,23 @@ export function PackOpening({ pack, onComplete, user }) {
               : `0 0 15px rgba(0,0,0,0.5)`,
           }}
         >
-          <div className="w-full h-full relative">
-            <img
-              src={card.image}
-              alt={card.name}
-              className={`w-full h-full object-cover transition-all duration-500 ${isRevealed ? 'opacity-100' : 'opacity-50 blur-sm'}`}
-            />
-            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.8) 100%)' }} />
+          <div className="w-full h-full relative flex flex-col">
+            {/* Icon area */}
+            <div className="flex-1 flex items-center justify-center">
+              {isRevealed
+                ? <span className="text-6xl drop-shadow-lg">{card.providerInfo.icon}</span>
+                : <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full animate-pulse" />
+              }
+            </div>
+            {/* Stats row */}
+            {isRevealed && (
+              <div className="px-3 pb-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-gray-400">
+                <span>💥 {card.stats.power}</span>
+                <span>⚡ {card.stats.speed}</span>
+                <span>🧠 {card.stats.intelligence}</span>
+                <span>✨ {card.stats.creativity}</span>
+              </div>
+            )}
             <AnimatePresence>
               {isRevealed && (
                 <motion.div
@@ -252,11 +338,6 @@ export function PackOpening({ pack, onComplete, user }) {
                 </motion.div>
               )}
             </AnimatePresence>
-            {!isRevealed && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full animate-pulse" />
-              </div>
-            )}
             {selectedIndex === index && isRevealed && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-blue-500/20 border-2 border-blue-500 rounded-2xl pointer-events-none" />
             )}
@@ -292,15 +373,41 @@ export function PackOpening({ pack, onComplete, user }) {
 
       {/* Cards container */}
       <div className="mb-8 flex flex-wrap justify-center gap-4 md:gap-6 max-w-6xl">
-        {cards.map((card, index) => (
-          <CardReveal
-            key={card.id}
-            card={card}
-            index={index}
-            isRevealed={showResult || selectedIndex === index}
-          />
-        ))}
+        {cards.map((card, index) => {
+          const isConverted = convertedIndices.has(index);
+          return (
+            <CardReveal
+              key={card.id}
+              card={card}
+              index={index}
+              isRevealed={showResult || selectedIndex === index}
+              isConverted={isConverted}
+              crystalAmount={isConverted ? (PRESTIGE_CRYSTAL_VALUES[card.rarity] || 0) : 0}
+            />
+          );
+        })}
       </div>
+
+      {/* Prestige crystal earnings banner */}
+      <AnimatePresence>
+        {showResult && totalPrestigeCrystals > 0 && (
+          <motion.div
+            initial={{ y: -16, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="mb-4 px-6 py-3 bg-indigo-900/40 border border-indigo-500/50 rounded-2xl flex items-center gap-3"
+          >
+            <span className="text-2xl">💎</span>
+            <div>
+              <div className="font-bold text-indigo-300">Prestige Crystals Earned!</div>
+              <div className="text-sm text-gray-400">
+                {convertedIndices.size} maxed card{convertedIndices.size > 1 ? 's' : ''} converted to{' '}
+                <span className="text-white font-bold">+{totalPrestigeCrystals} 💎</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Controls */}
       <motion.div
@@ -337,7 +444,7 @@ export function PackOpening({ pack, onComplete, user }) {
             className="px-8 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-xl font-bold shadow-lg flex items-center gap-2"
           >
             <Crown className="w-5 h-5" />
-            Done ({cards.length} Cards)
+            Done ({cards.length - convertedIndices.size} Cards{totalPrestigeCrystals > 0 ? ` · 💎 ${totalPrestigeCrystals}` : ''})
           </motion.button>
         )}
       </motion.div>

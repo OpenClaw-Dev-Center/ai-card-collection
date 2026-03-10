@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Swords, Shield, Zap, Brain, Sparkles, Star,
-  ChevronRight, RotateCcw, Trophy, Skull, Plus, X, Info
+  ChevronRight, RotateCcw, Trophy, Skull, Plus, X, Info,
+  Save, FolderOpen, Filter, SortAsc, Trash2
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { PROVIDERS, calculateHP } from '../data/cards';
@@ -352,12 +353,29 @@ function SynergyBadge({ synergy }) {
 // ─────────────────────────────────────────────
 //  MAIN COMPONENT
 // ─────────────────────────────────────────────
+const PRESET_KEY = (user) => `deckPresets_${user}`;
+
+function loadPresets(user) {
+  try { return JSON.parse(localStorage.getItem(PRESET_KEY(user)) || '[]'); } catch { return []; }
+}
+function savePresets(user, presets) {
+  localStorage.setItem(PRESET_KEY(user), JSON.stringify(presets));
+}
+
 export function DeckBattle({ user, onComplete, onBack }) {
   const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);
   const [phase, setPhase] = useState('build'); // build | reveal | battle | result
   const [playerDeckSelection, setPlayerDeckSelection] = useState([]); // cards being built
   const MAX_DECK = 5;
+
+  // Build-phase filter/sort/preset state
+  const [filterProvider, setFilterProvider] = useState('ALL');
+  const [filterRarity, setFilterRarity] = useState('ALL');
+  const [sortBy, setSortBy] = useState('default'); // default | name | rarity | stats
+  const [presets, setPresets] = useState([]);
+  const [presetName, setPresetName] = useState('');
+  const [showPresets, setShowPresets] = useState(false);
 
   // Battle state
   const [playerDeck, setPlayerDeck] = useState([]);
@@ -387,12 +405,54 @@ export function DeckBattle({ user, onComplete, onBack }) {
     if (user) {
       const saved = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
       setCollection(saved);
+      setPresets(loadPresets(user));
     }
   }, [user]);
+
+  const savePreset = () => {
+    const name = presetName.trim() || `Deck ${presets.length + 1}`;
+    // Store card ids so we can re-hydrate from collection
+    const ids = playerDeckSelection.map(c => c.id);
+    const updated = [...presets, { name, ids, createdAt: Date.now() }];
+    setPresets(updated);
+    savePresets(user, updated);
+    setPresetName('');
+  };
+
+  const loadPreset = (preset) => {
+    const cards = preset.ids
+      .map(id => collection.find(c => c.id === id))
+      .filter(Boolean)
+      .slice(0, MAX_DECK);
+    setPlayerDeckSelection(cards);
+    setShowPresets(false);
+  };
+
+  const deletePreset = (idx) => {
+    const updated = presets.filter((_, i) => i !== idx);
+    setPresets(updated);
+    savePresets(user, updated);
+  };
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [battleLog]);
+
+  // ── build phase filter/sort ──
+  const RARITY_ORDER = { COMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5 };
+  const filteredSortedCollection = collection
+    .filter(c => (filterProvider === 'ALL' || c.provider === filterProvider)
+               && (filterRarity === 'ALL' || c.rarity === filterRarity))
+    .sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'rarity') return RARITY_ORDER[b.rarity] - RARITY_ORDER[a.rarity];
+      if (sortBy === 'stats') {
+        const sumA = Object.values(a.stats).reduce((s, v) => s + v, 0);
+        const sumB = Object.values(b.stats).reduce((s, v) => s + v, 0);
+        return sumB - sumA;
+      }
+      return 0;
+    });
 
   // ── build phase helpers ──
   const toggleCardInDeck = (card) => {
@@ -794,11 +854,52 @@ export function DeckBattle({ user, onComplete, onBack }) {
         <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Card pool */}
           <div className="lg:col-span-2">
-            <h2 className="text-lg font-bold mb-3 text-gray-200">
-              Select Cards <span className="text-gray-400 text-sm">({playerDeckSelection.length}/{MAX_DECK})</span>
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className="text-lg font-bold text-gray-200">
+                Select Cards <span className="text-gray-400 text-sm">({playerDeckSelection.length}/{MAX_DECK})</span>
+              </h2>
+              {/* Filter / sort controls */}
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-gray-400" />
+                  <select
+                    value={filterProvider}
+                    onChange={e => setFilterProvider(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-200 focus:outline-none"
+                  >
+                    <option value="ALL">All Providers</option>
+                    {['CLAUDE','GPT','GEMINI','LLAMA','MISTRAL','DEEPSEEK'].map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterRarity}
+                    onChange={e => setFilterRarity(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-200 focus:outline-none"
+                  >
+                    <option value="ALL">All Rarities</option>
+                    {['COMMON','RARE','EPIC','LEGENDARY','MYTHIC'].map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1">
+                  <SortAsc className="w-3 h-3 text-gray-400" />
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-200 focus:outline-none"
+                  >
+                    <option value="default">Default</option>
+                    <option value="name">Name</option>
+                    <option value="rarity">Rarity</option>
+                    <option value="stats">Stats</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-              {collection.map(card => {
+              {filteredSortedCollection.map(card => {
                 const selected = !!playerDeckSelection.find(c => c.id === card.id);
                 const glow = glowForProvider(card.provider);
                 return (
@@ -829,9 +930,9 @@ export function DeckBattle({ user, onComplete, onBack }) {
                   </motion.div>
                 );
               })}
-              {collection.length === 0 && (
+              {filteredSortedCollection.length === 0 && (
                 <div className="col-span-3 text-center text-gray-500 py-12">
-                  Open some packs first to get cards!
+                  {collection.length === 0 ? 'Open some packs first to get cards!' : 'No cards match the current filters.'}
                 </div>
               )}
             </div>
@@ -907,6 +1008,88 @@ export function DeckBattle({ user, onComplete, onBack }) {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Deck Presets */}
+            <div className="bg-gray-900/60 rounded-2xl p-4 border border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-200 flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4" /> Deck Presets
+                </h3>
+                <button
+                  onClick={() => setShowPresets(p => !p)}
+                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  {showPresets ? 'Hide' : `Show (${presets.length})`}
+                </button>
+              </div>
+
+              {/* Save current deck */}
+              {playerDeckSelection.length >= 2 && (
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={e => setPresetName(e.target.value)}
+                    placeholder="Preset name…"
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                    onKeyDown={e => e.key === 'Enter' && savePreset()}
+                  />
+                  <button
+                    onClick={savePreset}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-600 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Save
+                  </button>
+                </div>
+              )}
+
+              {/* Preset list */}
+              <AnimatePresence>
+                {showPresets && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="space-y-1.5 overflow-hidden"
+                  >
+                    {presets.length === 0 && (
+                      <div className="text-xs text-gray-600 text-center py-2">No saved presets yet</div>
+                    )}
+                    {presets.map((preset, idx) => {
+                      // Count how many cards are still in collection
+                      const available = preset.ids.filter(id => collection.find(c => c.id === id)).length;
+                      return (
+                        <div key={preset.createdAt} className="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                          <div>
+                            <div className="text-sm font-bold">{preset.name}</div>
+                            <div className="text-xs text-gray-500">{available}/{preset.ids.length} cards available</div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => loadPreset(preset)}
+                              disabled={available < 2}
+                              className={`px-2 py-1 rounded text-xs font-bold transition-colors ${
+                                available >= 2
+                                  ? 'bg-purple-700 hover:bg-purple-600 text-white'
+                                  : 'bg-gray-700 text-gray-600 cursor-not-allowed'
+                              }`}
+                            >
+                              Load
+                            </button>
+                            <button
+                              onClick={() => deletePreset(idx)}
+                              className="p-1 text-gray-600 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <motion.button

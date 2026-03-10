@@ -225,6 +225,20 @@ export function upgradeCardWithDupes(card, collection) {
   return { upgradedCard, newCollection };
 }
 
+// Prestige crystal payout when a maxed card would have been pulled
+export const PRESTIGE_CRYSTAL_VALUES = {
+  COMMON: 5,
+  RARE: 20,
+  EPIC: 75,
+  LEGENDARY: 300,
+  MYTHIC: 1000
+};
+
+// Returns true when no further upgrades exist for this card
+export function isCardMaxed(card) {
+  return !VERSION_PROGRESSION[card.version];
+}
+
 // Legacy stub kept for any import that still uses getUpgradeCost (returns null = max)
 export function getUpgradeCost() { return null; }
 export function upgradeCard(card) {

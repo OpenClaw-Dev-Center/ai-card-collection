@@ -48,16 +48,20 @@ export function useAuth() {
 export function useGame(user) {
   const [currency, setCurrency] = useState(0);
   const [packs, setPacks] = useState({ basic: 0, premium: 0, mega: 0, legendary: 0 });
+  const [prestigeCrystals, setPrestigeCrystals] = useState(0);
 
   useEffect(() => {
     if (user) {
       const savedCurrency = JSON.parse(localStorage.getItem(`currency_${user}`) || '1000');
       const savedPacks = JSON.parse(localStorage.getItem(`packs_${user}`) || '{"basic":3,"premium":0,"mega":0,"legendary":0}');
+      const savedCrystals = JSON.parse(localStorage.getItem(`prestige_${user}`) || '0');
       setCurrency(savedCurrency);
       setPacks(savedPacks);
+      setPrestigeCrystals(savedCrystals);
     } else {
       setCurrency(0);
       setPacks({ basic: 0, premium: 0, mega: 0, legendary: 0 });
+      setPrestigeCrystals(0);
     }
   }, [user]);
 
@@ -77,5 +81,13 @@ export function useGame(user) {
     }
   };
 
-  return { currency, packs, updateCurrency, updatePacks };
+  const updatePrestigeCrystals = (amount) => {
+    const newVal = Math.max(0, prestigeCrystals + amount);
+    setPrestigeCrystals(newVal);
+    if (user) {
+      localStorage.setItem(`prestige_${user}`, JSON.stringify(newVal));
+    }
+  };
+
+  return { currency, packs, updateCurrency, updatePacks, prestigeCrystals, updatePrestigeCrystals };
 }

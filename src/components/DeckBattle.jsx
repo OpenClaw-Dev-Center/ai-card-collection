@@ -784,7 +784,7 @@ export function DeckBattle({ user, onComplete, onBack }) {
 
   const resolveWin = (side, pDeck, eDeck) => {
     setWinner(side);
-    const earned = side === 'player' ? 400 + turnCount * 30 : 75;
+    const earned = side === 'player' ? Math.max(400, 3090 - turnCount * 90) : 75;
     setReward(earned);
     if (side === 'player') recordBattle('win');
     else recordBattle('loss');

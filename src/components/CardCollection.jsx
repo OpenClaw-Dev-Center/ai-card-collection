@@ -171,7 +171,21 @@ export function CardCollection({ user, onBack }) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {group.versions
-                    .sort((a, b) => b.version.localeCompare(a.version))
+                    .sort((a, b) => {
+                      switch (sortBy) {
+                        case 'power': return b.stats.power - a.stats.power;
+                        case 'name': {
+                          const rarityOrder = { MYTHIC: 5, LEGENDARY: 4, EPIC: 3, RARE: 2, COMMON: 1 };
+                          return rarityOrder[b.rarity] - rarityOrder[a.rarity];
+                        }
+                        case 'version': return b.version.localeCompare(a.version);
+                        case 'rarity':
+                        default: {
+                          const rarityOrder = { MYTHIC: 5, LEGENDARY: 4, EPIC: 3, RARE: 2, COMMON: 1 };
+                          return rarityOrder[b.rarity] - rarityOrder[a.rarity];
+                        }
+                      }
+                    })
                     .map(card => {
                       const required = getDuplicatesRequired(card);
                       const dupeCount = getDuplicateCount(card, collection);

@@ -8,12 +8,72 @@ export const RARITIES = {
 };
 
 export const PROVIDERS = {
-  CLAUDE: { name: 'Claude', color: '#d97706', icon: '🤖' },
-  GPT: { name: 'GPT', color: '#10b981', icon: '🧠' },
-  GEMINI: { name: 'Gemini', color: '#3b82f6', icon: '✨' },
-  LLAMA: { name: 'Llama', color: '#8b5cf6', icon: '🦙' },
-  MISTRAL: { name: 'Mistral', color: '#ec4899', icon: '🌊' },
-  DEEPSEEK: { name: 'DeepSeek', color: '#6366f1', icon: '🔮' }
+  CLAUDE: {
+    name: 'Claude',
+    color: '#d97706',
+    icon: '🤖',
+    image: 'https://cdn.jsdelivr.net/gh/satellite-chat/ai-icon-library@main/src/icons/claude.svg',
+    ability: {
+      name: 'Analytical Precision',
+      description: 'When using Focus, 30% chance to reveal opponent\'s next move and gain +20% bonus damage.',
+      icon: 'Eye'
+    }
+  },
+  GPT: {
+    name: 'GPT',
+    color: '#10b981',
+    icon: '🧠',
+    image: 'https://cdn.jsdelivr.net/gh/satellite-chat/ai-icon-library@main/src/icons/chatgpt.svg',
+    ability: {
+      name: 'Adaptive Learning',
+      description: 'At battle start and every 3 turns, randomly gains +10% to one stat (Power, Speed, Intelligence, or Creativity).',
+      icon: 'Brain'
+    }
+  },
+  GEMINI: {
+    name: 'Gemini',
+    color: '#3b82f6',
+    icon: '✨',
+    image: 'https://cdn.jsdelivr.net/gh/satellite-chat/ai-icon-library@main/src/icons/gemini.svg',
+    ability: {
+      name: 'Multimodal Mastery',
+      description: 'Can use any stat for any move. Strike and Blitz damage reduced by 15%, but provides tactical flexibility.',
+      icon: 'Sparkles'
+    }
+  },
+  LLAMA: {
+    name: 'Llama',
+    color: '#8b5cf6',
+    icon: '🦙',
+    image: 'https://cdn.jsdelivr.net/gh/satellite-chat/ai-icon-library@main/src/icons/llama.svg',
+    ability: {
+      name: 'Versatile Tactician',
+      description: 'Can switch stat allocation once per battle. Focus bonus persists until Strike is used (does not expire after 1 turn).',
+      icon: 'Repeat'
+    }
+  },
+  MISTRAL: {
+    name: 'Mistral',
+    color: '#ec4899',
+    icon: '🌊',
+    image: 'https://cdn.jsdelivr.net/gh/satellite-chat/ai-icon-library@main/src/icons/mistral.svg',
+    ability: {
+      name: 'Efficient Operations',
+      description: 'Moves have 1 turn cooldown, allowing same move to be used in consecutive turns after cooldown.',
+      icon: 'Zap'
+    }
+  },
+  DEEPSEEK: {
+    name: 'DeepSeek',
+    color: '#6366f1',
+    icon: '🔮',
+    image: 'https://cdn.jsdelivr.net/gh/satellite-chat/ai-icon-library@main/src/icons/deepseek.svg',
+    ability: {
+      name: 'Precognitive Analysis',
+      description: '25% chance to predict opponent\'s move. If they attack, next strike gains +20% damage; if they defend, next attack ignores 30% defense.',
+      icon: 'Eye'
+    }
+  }
 };
 
 // Base card definitions (before versioning)
@@ -101,7 +161,7 @@ export function generateCardPool() {
           rarityInfo: rarity,
           providerInfo: PROVIDERS[base.provider],
           stats,
-          image: `https://card-bg-gradient-server.vercel.app/api/gradient?text=${encodeURIComponent(base.baseName)}&v=${base.baseVersion}&rarity=${rarityKey.toLowerCase()}`,
+          image: PROVIDERS[base.provider].image,
           description: `${base.baseName} ${rarity.name} edition - Version ${base.baseVersion}`
         });
       }

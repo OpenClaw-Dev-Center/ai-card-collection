@@ -48,18 +48,11 @@ function App() {
     // Deduct cost
     updateCurrency(-openingPack.cost);
 
-    // Add cards to collection
+    // Each card from the pack is appended as its own entry (duplicates intentional —
+    // the upgrade system consumes duplicate copies of the same baseId+rarity).
     if (user) {
       const savedCollection = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
-      const updatedCollection = [...savedCollection];
-      newCards.forEach(card => {
-        const existingIndex = updatedCollection.findIndex(c => c.id === card.id);
-        if (existingIndex >= 0) {
-          updatedCollection[existingIndex] = card;
-        } else {
-          updatedCollection.push(card);
-        }
-      });
+      const updatedCollection = [...savedCollection, ...newCards];
       localStorage.setItem(`collection_${user}`, JSON.stringify(updatedCollection));
     }
   };

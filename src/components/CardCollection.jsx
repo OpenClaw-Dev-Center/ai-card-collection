@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Search, Filter, Grid3X3 } from 'lucide-react';
+import { ArrowLeft, Search, Filter, Grid3X3, Copy, ArrowUp, Lock } from 'lucide-react';
 import { Card } from './Card';
-import { CARD_POOL, RARITIES, VERSION_PROGRESSION, getUpgradeCost, upgradeCard } from '../data/cards';
+import { RARITIES, VERSION_PROGRESSION, getDuplicatesRequired, getDuplicateCount, upgradeCardWithDupes } from '../data/cards';
 
 export function CardCollection({ user, onBack }) {
   const [collection, setCollection] = useState([]);
@@ -54,36 +54,15 @@ export function CardCollection({ user, onBack }) {
   }, {});
 
   const handleUpgrade = (card) => {
-    const upgradeCost = getUpgradeCost(card);
-    if (upgradeCost === null) {
-      alert('This card is already at max level!');
-      return;
-    }
-
-    const currency = JSON.parse(localStorage.getItem(`currency_${user}`) || '0');
-    if (currency < upgradeCost) {
-      alert(`Not enough currency! Need ${upgradeCost} credits.`);
-      return;
-    }
-
-    const upgraded = upgradeCard(card);
-    if (!upgraded) return;
-
-    // Deduct cost
-    localStorage.setItem(`currency_${user}`, JSON.stringify(currency - upgradeCost));
-
-    // Update collection
-    const newCollection = collection.map(c => c.id === card.id ? upgraded : c);
+    const result = upgradeCardWithDupes(card, collection);
+    if (!result) return;
+    const { newCollection } = result;
     localStorage.setItem(`collection_${user}`, JSON.stringify(newCollection));
     setCollection(newCollection);
     setUpgradingCard(null);
-
-    alert(`Successfully upgraded ${card.name} to version ${upgraded.version}!`);
   };
 
-  const statsTotal = (card) => {
-    return Object.values(card.stats).reduce((a, b) => a + b, 0);
-  };
+  const statsTotal = (card) => Object.values(card.stats).reduce((a, b) => a + b, 0);
 
   return (
     <div className="min-h-screen p-6">
@@ -193,37 +172,63 @@ export function CardCollection({ user, onBack }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {group.versions
                     .sort((a, b) => b.version.localeCompare(a.version))
-                    .map(card => (
-                      <div key={card.id} className="relative group">
-                        <Card
-                          card={card}
-                          onClick={() => {}} // Handle from main card click
-                          selected={false}
-                          showUpgrade={getUpgradeCost(card) !== null}
-                        />
+                    .map(card => {
+                      const required = getDuplicatesRequired(card);
+                      const dupeCount = getDuplicateCount(card, collection);
+                      const canUpgrade = required !== null && dupeCount >= required;
+                      const isMaxLevel = required === null;
+                      return (
+                        <div key={card.id} className="relative group">
+                          <Card
+                            card={card}
+                            onClick={() => {}}
+                            selected={false}
+                            showUpgrade={!isMaxLevel}
+                          />
 
-                        {/* Upgrage overlay */}
-                        {getUpgradeCost(card) !== null && (
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setUpgradingCard(card);
-                            }}
-                            className="absolute bottom-8 right-2 z-10 px-3 py-1.5 bg-gradient-to-r from-green-600 to-teal-600 rounded-full text-xs font-bold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
-                          >
-                            <span>Upgrade</span>
-                            <span className="text-yellow-300">{getUpgradeCost(card)}</span>
-                          </motion.button>
-                        )}
+                          {/* Duplicate / upgrade badge */}
+                          <div className="absolute top-2 left-2 flex flex-col gap-1">
+                            <div className="bg-black/70 backdrop-blur px-2 py-0.5 rounded text-xs font-bold">
+                              {statsTotal(card)} pts
+                            </div>
+                            {!isMaxLevel && (
+                              <div
+                                className={`px-2 py-0.5 rounded text-xs font-bold flex items-center gap-1 ${
+                                  canUpgrade
+                                    ? 'bg-green-700/80 text-green-200'
+                                    : 'bg-gray-800/80 text-gray-400'
+                                }`}
+                              >
+                                <Copy className="w-3 h-3" />
+                                {dupeCount}/{required}
+                              </div>
+                            )}
+                            {isMaxLevel && (
+                              <div className="bg-yellow-700/80 px-2 py-0.5 rounded text-xs font-bold text-yellow-200">
+                                MAX
+                              </div>
+                            )}
+                          </div>
 
-                        {/* Total stat badge */}
-                        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-2 py-1 rounded text-xs font-bold">
-                          {statsTotal(card)} Total
+                          {/* Upgrade button */}
+                          {!isMaxLevel && (
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={(e) => { e.stopPropagation(); setUpgradingCard(card); }}
+                              disabled={!canUpgrade}
+                              className={`absolute bottom-8 right-2 z-10 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg transition-opacity flex items-center gap-1 ${
+                                canUpgrade
+                                  ? 'bg-gradient-to-r from-green-600 to-teal-600 opacity-0 group-hover:opacity-100'
+                                  : 'bg-gray-700 text-gray-500 opacity-0 group-hover:opacity-100 cursor-not-allowed'
+                              }`}
+                            >
+                              {canUpgrade ? <><ArrowUp className="w-3 h-3" /> Upgrade</> : <><Lock className="w-3 h-3" /> Need {required - dupeCount} more</>}
+                            </motion.button>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               </motion.div>
             ))}
@@ -233,68 +238,102 @@ export function CardCollection({ user, onBack }) {
 
       {/* Upgrade Modal */}
       <AnimatePresence>
-        {upgradingCard && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setUpgradingCard(null)}
-          >
+        {upgradingCard && (() => {
+          const required = getDuplicatesRequired(upgradingCard);
+          const dupeCount = getDuplicateCount(upgradingCard, collection);
+          const canUpgrade = required !== null && dupeCount >= required;
+          const nextVersion = VERSION_PROGRESSION[upgradingCard.version]?.next;
+          return (
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-gray-900 rounded-2xl p-8 max-w-md w-full border border-gray-700"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              onClick={() => setUpgradingCard(null)}
             >
-              <h3 className="text-2xl font-bold mb-4 text-center">Upgrade Card</h3>
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-gray-900 rounded-2xl p-8 max-w-md w-full border border-gray-700"
+              >
+                <h3 className="text-2xl font-bold mb-4 text-center">Upgrade Card</h3>
 
-              <div className="flex items-center justify-center gap-6 mb-6">
-                {/* Before */}
-                <div className="text-center">
-                  <div className="text-sm text-gray-400 mb-2">Current</div>
-                  <div className="text-xl font-bold">{upgradingCard.version}</div>
-                  <div className="text-3xl mt-2">{upgradingCard.providerInfo.icon}</div>
-                </div>
-
-                <div className="text-3xl text-gray-500">→</div>
-
-                {/* After */}
-                <div className="text-center">
-                  <div className="text-sm text-gray-400 mb-2">New Version</div>
-                  <div className="text-xl font-bold text-green-400">
-                    {VERSION_PROGRESSION[upgradingCard.version]?.next}
+                <div className="flex items-center justify-center gap-6 mb-6">
+                  <div className="text-center">
+                    <div className="text-sm text-gray-400 mb-2">Current</div>
+                    <div className="text-xl font-bold">{upgradingCard.version}</div>
+                    <div className="text-3xl mt-2">{upgradingCard.providerInfo.icon}</div>
                   </div>
-                  <div className="text-3xl mt-2 text-green-400">{upgradingCard.providerInfo.icon}</div>
+                  <div className="text-3xl text-gray-500">→</div>
+                  <div className="text-center">
+                    <div className="text-sm text-gray-400 mb-2">New Version</div>
+                    <div className="text-xl font-bold text-green-400">{nextVersion}</div>
+                    <div className="text-3xl mt-2 text-green-400">{upgradingCard.providerInfo.icon}</div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="bg-gray-800/50 rounded-xl p-4 mb-6">
-                <div className="text-center text-sm text-gray-400 mb-2">Upgrade Cost</div>
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-2xl font-bold text-yellow-400">{getUpgradeCost(upgradingCard)}</span>
-                  <span className="text-gray-300">Credits</span>
+                {/* Duplicate cost */}
+                <div className="bg-gray-800/50 rounded-xl p-4 mb-3">
+                  <div className="text-center text-sm text-gray-400 mb-2">Duplicate copies required</div>
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="flex gap-1">
+                      {Array.from({ length: required }).map((_, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: i * 0.05 }}
+                          className={`w-8 h-10 rounded-lg border-2 flex items-center justify-center text-sm ${
+                            i < dupeCount
+                              ? 'border-green-500 bg-green-900/40 text-green-300'
+                              : 'border-gray-600 bg-gray-800/40 text-gray-600'
+                          }`}
+                        >
+                          {i < dupeCount ? upgradingCard.providerInfo.icon : '?'}
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-center mt-2 text-sm">
+                    <span className={dupeCount >= required ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                      {dupeCount}/{required} copies
+                    </span>
+                    {dupeCount < required && (
+                      <span className="text-gray-500 ml-2">(need {required - dupeCount} more)</span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setUpgradingCard(null)}
-                  className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleUpgrade(upgradingCard)}
-                  className="flex-1 py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-500 hover:to-teal-500 rounded-xl font-medium transition-all shadow-lg"
-                >
-                  Upgrade Now
-                </button>
-              </div>
+                <p className="text-xs text-gray-500 text-center mb-4">
+                  {required} duplicate{required > 1 ? 's' : ''} of <span style={{ color: upgradingCard.rarityInfo.color }}>{upgradingCard.rarityInfo.name} {upgradingCard.name}</span> will be consumed.
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setUpgradingCard(null)}
+                    className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleUpgrade(upgradingCard)}
+                    disabled={!canUpgrade}
+                    className={`flex-1 py-3 rounded-xl font-medium transition-all shadow-lg flex items-center justify-center gap-2 ${
+                      canUpgrade
+                        ? 'bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-500 hover:to-teal-500'
+                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                    {canUpgrade ? 'Upgrade!' : `Need ${required - dupeCount} more`}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

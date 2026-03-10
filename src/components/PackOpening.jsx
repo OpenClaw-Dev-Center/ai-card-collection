@@ -3,55 +3,170 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Crown, Star, Zap } from 'lucide-react';
 import { CARD_POOL, RARITIES, PACK_TYPES } from '../data/cards';
 
+// ── Rarity-weighted card picker ──────────────────────────────────────────────
+function pickCard(pack, slotIndex) {
+  const overrides = pack.probabilityOverrides;
+  const rarityKeys = Object.keys(overrides);
+  const rand = Math.random();
+  let cumulative = 0;
+  let chosenRarity = rarityKeys[rarityKeys.length - 1];
+  for (const key of rarityKeys) {
+    cumulative += overrides[key];
+    if (rand <= cumulative) { chosenRarity = key; break; }
+  }
+  // Slot 0 must meet guaranteed rarity floor
+  if (slotIndex === 0) {
+    const rarityOrder = { COMMON: 0, RARE: 1, EPIC: 2, LEGENDARY: 3, MYTHIC: 4 };
+    if (rarityOrder[chosenRarity] < rarityOrder[pack.guaranteedRarity]) {
+      chosenRarity = pack.guaranteedRarity;
+    }
+  }
+  const pool = CARD_POOL.filter(c => c.rarity === chosenRarity);
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  return { ...base, id: `${base.baseId}-${Date.now()}-${slotIndex}` };
+}
+
+// ── Cinematic Legendary / Mythic reveal overlay ───────────────────────────────
+function CinematicReveal({ card, onDone }) {
+  const isMythic = card.rarity === 'MYTHIC';
+  const color = card.rarityInfo.color;
+  const beamCount = isMythic ? 16 : 10;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden"
+      style={{ background: `radial-gradient(ellipse at center, ${color}22 0%, #000000ee 70%)` }}
+    >
+      {/* Rotating light beams */}
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: isMythic ? 4 : 6, repeat: Infinity, ease: 'linear' }}
+        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+      >
+        {Array.from({ length: beamCount }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-1 origin-bottom"
+            style={{
+              height: '55vh',
+              bottom: '50%',
+              left: '50%',
+              transform: `rotate(${(i / beamCount) * 360}deg) translateX(-50%)`,
+              background: `linear-gradient(to top, ${color}80, transparent)`,
+              opacity: 0.6
+            }}
+          />
+        ))}
+      </motion.div>
+
+      {/* Floating particle ring */}
+      {Array.from({ length: 24 }).map((_, i) => {
+        const angle = (i / 24) * Math.PI * 2;
+        const r = 160 + Math.random() * 60;
+        return (
+          <motion.div
+            key={i}
+            initial={{ x: 0, y: 0, opacity: 0, scale: 0 }}
+            animate={{
+              x: Math.cos(angle) * r,
+              y: Math.sin(angle) * r,
+              opacity: [0, 1, 1, 0],
+              scale: [0, 1, 1, 0]
+            }}
+            transition={{ duration: 1.8, delay: 0.2 + i * 0.04, ease: 'easeOut' }}
+            className="absolute w-2 h-2 rounded-full"
+            style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+          />
+        );
+      })}
+
+      {/* Card itself */}
+      <motion.div
+        initial={{ scale: 0, rotate: -15, opacity: 0 }}
+        animate={{ scale: 1, rotate: 0, opacity: 1 }}
+        transition={{ delay: 0.3, type: 'spring', stiffness: 180, damping: 14 }}
+        className="relative z-10 w-52 h-72 rounded-2xl overflow-hidden border-4 shadow-2xl"
+        style={{
+          borderColor: color,
+          boxShadow: `0 0 60px ${color}80, 0 0 120px ${color}40`
+        }}
+      >
+        <img src={card.image} alt={card.name} className="w-full h-full object-cover" />
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.85) 100%)' }} />
+        <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
+          <div className="font-black text-xl text-white drop-shadow-lg">{card.name}</div>
+          <div className="text-sm opacity-80">{card.provider} · v{card.version}</div>
+          <div className="mt-1 inline-block px-3 py-0.5 rounded-full text-xs font-black" style={{ background: color }}>
+            {isMythic ? '✦ MYTHIC ✦' : '★ LEGENDARY ★'}
+          </div>
+        </div>
+        {/* Shimmer */}
+        <motion.div
+          animate={{ x: ['-100%', '200%'] }}
+          transition={{ duration: 1.2, delay: 0.8, repeat: Infinity, repeatDelay: 2 }}
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: `linear-gradient(105deg, transparent 40%, ${color}50 50%, transparent 60%)` }}
+        />
+      </motion.div>
+
+      {/* Label */}
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.8 }}
+        className="absolute bottom-1/4 text-center px-4"
+      >
+        <motion.p
+          animate={{ scale: [1, 1.06, 1] }}
+          transition={{ duration: 1.2, repeat: Infinity }}
+          className="text-3xl font-black tracking-widest uppercase"
+          style={{ color, textShadow: `0 0 30px ${color}` }}
+        >
+          {isMythic ? '✦ MYTHIC PULL! ✦' : '★ LEGENDARY! ★'}
+        </motion.p>
+      </motion.div>
+
+      {/* Skip / continue */}
+      <motion.button
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.2 }}
+        onClick={onDone}
+        className="absolute bottom-8 px-10 py-3 rounded-full font-bold text-lg text-black"
+        style={{ background: color }}
+      >
+        Continue
+      </motion.button>
+    </motion.div>
+  );
+}
+
 export function PackOpening({ pack, onComplete, user }) {
   const [cards, setCards] = useState([]);
   const [isOpening, setIsOpening] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [speed, setSpeed] = useState(1);
+  // Cinematic reveal queue: indices of legendary/mythic cards waiting to be shown
+  const [cinematicQueue, setCinematicQueue] = useState([]);
+  const [currentCinematic, setCurrentCinematic] = useState(null); // card object
   const containerRef = useRef(null);
 
   useEffect(() => {
-    // Generate random cards based on pack probabilities
     const generated = [];
     for (let i = 0; i < pack.cards; i++) {
-      let card;
-      let attempts = 0;
-      do {
-        // Get random card from pool
-        const randomIdx = Math.floor(Math.random() * CARD_POOL.length);
-        card = { ...CARD_POOL[randomIdx] };
-
-        // Replace with a new ID instance
-        card.id = `${card.baseId}-${Date.now()}-${i}`;
-        attempts++;
-      } while (attempts < 100 && !isValidCard(card, pack.guaranteedRarity, i === 0));
-
-      generated.push(card);
+      generated.push(pickCard(pack, i));
     }
-
     // Sort by rarity for reveal order
     const rarityOrder = { MYTHIC: 5, LEGENDARY: 4, EPIC: 3, RARE: 2, COMMON: 1 };
     generated.sort((a, b) => rarityOrder[b.rarity] - rarityOrder[a.rarity]);
-
     setCards(generated);
-
-    // Start opening animation after a short delay
-    const timer = setTimeout(() => {
-      setIsOpening(true);
-    }, 500);
-
+    const timer = setTimeout(() => setIsOpening(true), 500);
     return () => clearTimeout(timer);
   }, [pack]);
-
-  const isValidCard = (card, guaranteedRarity, isGuaranteedSlot) => {
-    if (isGuaranteedSlot) {
-      const rarityValue = RARITIES[card.rarity].probability;
-      const guaranteedValue = RARITIES[guaranteedRarity].probability;
-      return rarityValue >= guaranteedValue;
-    }
-    return true;
-  };
 
   const handleCardClick = (index) => {
     if (isOpening) return;
@@ -60,138 +175,107 @@ export function PackOpening({ pack, onComplete, user }) {
 
   const revealAll = () => {
     setSpeed(1);
-    setShowResult(true); // Just reveal all, don't complete yet
+    setShowResult(true);
+    // Queue cinematic reveals for legendary/mythic
+    const queue = cards
+      .map((c, i) => ({ card: c, index: i }))
+      .filter(({ card }) => card.rarity === 'LEGENDARY' || card.rarity === 'MYTHIC');
+    if (queue.length > 0) {
+      setCinematicQueue(queue.map(q => q.card));
+      setCurrentCinematic(queue[0].card);
+    }
   };
 
-  const handleDone = () => {
-    onComplete(cards);
+  const advanceCinematic = () => {
+    const next = cinematicQueue.slice(1);
+    setCinematicQueue(next);
+    setCurrentCinematic(next.length > 0 ? next[0] : null);
   };
 
-  // Card reveal animation with shimmer effect
-  const CardReveal = ({ card, index, isRevealed }) => (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8, y: 50 }}
-      animate={{
-        opacity: isRevealed ? 1 : 0.3,
-        scale: isRevealed ? 1 : 0.85,
-        y: isRevealed ? 0 : 20
-      }}
-      transition={{
-        duration: 0.6,
-        delay: index * (0.1 / speed),
-        type: 'spring',
-        stiffness: 300
-      }}
-      style={{ transformStyle: 'preserve-3d' }}
-      className="relative w-48 h-64 md:w-56 md:h-80 cursor-pointer"
-      onClick={() => !isOpening && handleCardClick(index)}
-    >
-      {/* Card frame */}
-      <div
-        className={`w-full h-full rounded-2xl overflow-hidden border-2 transition-all ${
-          isRevealed ? 'ring-2 ring-yellow-400/50' : ''
-        }`}
-        style={{
-          background: `linear-gradient(135deg, ${card.rarityInfo.color}20 0%, rgba(15, 15, 35, 0.95) 100%)`,
-          borderColor: card.rarityInfo.color,
-          boxShadow: isRevealed
-            ? `0 0 30px ${RARITIES[card.rarity].glow}60, inset 0 0 30px rgba(0,0,0,0.4)`
-            : `0 0 15px rgba(0,0,0,0.5)`,
-          transform: isRevealed ? 'scale(1)' : 'scale(0.92)'
-        }}
+  const handleDone = () => onComplete(cards);
+
+  // Card reveal component ──────────────────────────────────────────────────────
+  const CardReveal = ({ card, index, isRevealed }) => {
+    const isSpecial = card.rarity === 'LEGENDARY' || card.rarity === 'MYTHIC';
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, y: 50 }}
+        animate={{ opacity: isRevealed ? 1 : 0.3, scale: isRevealed ? 1 : 0.85, y: isRevealed ? 0 : 20 }}
+        transition={{ duration: 0.6, delay: index * (0.1 / speed), type: 'spring', stiffness: 300 }}
+        style={{ transformStyle: 'preserve-3d' }}
+        className="relative w-48 h-64 md:w-56 md:h-80 cursor-pointer"
+        onClick={() => !isOpening && handleCardClick(index)}
       >
-        {/* Card content (blurred if not revealed) */}
-        <div className="w-full h-full relative">
-          <img
-            src={card.image}
-            alt={card.name}
-            className={`w-full h-full object-cover transition-all duration-500 ${
-              isRevealed ? 'opacity-100' : 'opacity-50 blur-sm'
-            }`}
-          />
-
-          {/* Overlay gradient */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background: `linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.8) 100%)`
-            }}
-          />
-
-          {/* Card info (hidden until reveal) */}
-          <AnimatePresence>
-            {isRevealed && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="absolute bottom-0 left-0 right-0 p-4"
-              >
-                <div className="text-center">
-                  <h3 className="font-bold text-lg mb-1">{card.name}</h3>
-                  <div className="flex items-center justify-center gap-2 text-sm mb-2">
-                    <span>{card.provider}</span>
-                    <span>•</span>
-                    <span style={{ color: card.rarityInfo.color }}>v{card.version}</span>
-                  </div>
-                  <div
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold"
-                    style={{
-                      background: card.rarityInfo.color,
-                      color: 'white'
-                    }}
-                  >
-                    <Star className="w-3 h-3 fill-current" />
-                    {card.rarityInfo.name}
-                  </div>
-                </div>
-
-                {/* Rarity glow animation for rare+ cards */}
-                {(card.rarity === 'EPIC' || card.rarity === 'LEGENDARY' || card.rarity === 'MYTHIC') && (
-                  <motion.div
-                    animate={{
-                      boxShadow: [
-                        `0 0 10px ${card.rarityInfo.color}`,
-                        `0 0 25px ${card.rarityInfo.color}`,
-                        `0 0 10px ${card.rarityInfo.color}`
-                      ]
-                    }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute inset-0 rounded-2xl pointer-events-none"
-                    style={{ boxShadow: `inset 0 0 20px ${card.rarityInfo.color}80` }}
-                  />
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Not revealed placeholder */}
-          {!isRevealed && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full animate-pulse" />
-            </div>
-          )}
-
-          {/* Selected card highlight */}
-          {selectedIndex === index && isRevealed && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="absolute inset-0 bg-blue-500/20 border-2 border-blue-500 rounded-2xl pointer-events-none"
+        <div
+          className={`w-full h-full rounded-2xl overflow-hidden border-2 transition-all ${isRevealed ? 'ring-2 ring-yellow-400/50' : ''}`}
+          style={{
+            background: `linear-gradient(135deg, ${card.rarityInfo.color}20 0%, rgba(15, 15, 35, 0.95) 100%)`,
+            borderColor: card.rarityInfo.color,
+            boxShadow: isRevealed
+              ? `0 0 30px ${RARITIES[card.rarity].glow}60, inset 0 0 30px rgba(0,0,0,0.4)`
+              : `0 0 15px rgba(0,0,0,0.5)`,
+          }}
+        >
+          <div className="w-full h-full relative">
+            <img
+              src={card.image}
+              alt={card.name}
+              className={`w-full h-full object-cover transition-all duration-500 ${isRevealed ? 'opacity-100' : 'opacity-50 blur-sm'}`}
             />
-          )}
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.8) 100%)' }} />
+            <AnimatePresence>
+              {isRevealed && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="absolute bottom-0 left-0 right-0 p-4"
+                >
+                  <div className="text-center">
+                    <h3 className="font-bold text-lg mb-1">{card.name}</h3>
+                    <div className="flex items-center justify-center gap-2 text-sm mb-2">
+                      <span>{card.provider}</span><span>•</span>
+                      <span style={{ color: card.rarityInfo.color }}>v{card.version}</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold" style={{ background: card.rarityInfo.color, color: 'white' }}>
+                      <Star className="w-3 h-3 fill-current" />{card.rarityInfo.name}
+                    </div>
+                  </div>
+                  {isSpecial && (
+                    <motion.div
+                      animate={{ boxShadow: [`0 0 10px ${card.rarityInfo.color}`, `0 0 30px ${card.rarityInfo.color}`, `0 0 10px ${card.rarityInfo.color}`] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                      className="absolute inset-0 rounded-2xl pointer-events-none"
+                      style={{ boxShadow: `inset 0 0 20px ${card.rarityInfo.color}80` }}
+                    />
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {!isRevealed && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full animate-pulse" />
+              </div>
+            )}
+            {selectedIndex === index && isRevealed && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-blue-500/20 border-2 border-blue-500 rounded-2xl pointer-events-none" />
+            )}
+          </div>
+          {isRevealed && card.rarity !== 'COMMON' && <div className="card-shine absolute inset-0 pointer-events-none" />}
         </div>
-
-        {/* Shimmer effect on rare+ */}
-        {isRevealed && card.rarity !== 'COMMON' && (
-          <div className="card-shine absolute inset-0 pointer-events-none" />
-        )}
-      </div>
-    </motion.div>
-  );
+      </motion.div>
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" ref={containerRef}>
+      {/* Cinematic overlay */}
+      <AnimatePresence>
+        {currentCinematic && (
+          <CinematicReveal card={currentCinematic} onDone={advanceCinematic} />
+        )}
+      </AnimatePresence>
+
       {/* Title */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -282,26 +366,6 @@ export function PackOpening({ pack, onComplete, user }) {
         </motion.div>
       )}
 
-      {/* Particle effects for mythic/legendary pulls */}
-      {(showResult || selectedIndex !== null) && cards.some(c => c.rarity === 'MYTHIC' || c.rarity === 'LEGENDARY') && (
-        <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          {cards.filter(c => c.rarity === 'MYTHIC' || c.rarity === 'LEGENDARY').map((card, idx) => (
-            <motion.div
-              key={card.id}
-              initial={{ x: '50%', y: '50%', scale: 0 }}
-              animate={{
-                x: ['50%', `${20 + idx * 10}%`, `${80 - idx * 10}%`],
-                y: ['50%', `${20 + idx * 5}%`],
-                scale: [0, 1, 0.5],
-                opacity: [1, 0.8, 0]
-              }}
-              transition={{ duration: 3, repeat: Infinity }}
-              className="absolute w-2 h-2 rounded-full"
-              style={{ backgroundColor: card.rarityInfo.color, boxShadow: `0 0 20px ${card.rarityInfo.color}` }}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -171,35 +171,71 @@ export function generateCardPool() {
   return pool;
 }
 
-// Calculate upgrade cost (in upgrade tokens)
-export function getUpgradeCost(card) {
-  const rarityMultiplier = {
-    COMMON: 1, RARE: 2, EPIC: 4, LEGENDARY: 8, MYTHIC: 16
+// How many duplicate copies are needed to upgrade a card.
+// Cost scales with both rarity and upgrade tier.
+// tier 1 (first upgrade): base copies; tier 2: base * 2; tier 3: base * 3
+export function getDuplicatesRequired(card) {
+  const versionData = VERSION_PROGRESSION[card.version];
+  if (!versionData) return null; // already max level
+
+  const rarityBase = {
+    COMMON: 2, RARE: 3, EPIC: 4, LEGENDARY: 6, MYTHIC: 10
   }[card.rarity];
 
-  const version = VERSION_PROGRESSION[card.version];
-  if (!version) return null; // Max level
-
-  return 5 * rarityMultiplier * (version.tier + 1);
+  return rarityBase * versionData.tier;
 }
 
-// Get upgraded card
-export function upgradeCard(card) {
+// Returns how many extra copies of this base+rarity card are in the collection
+export function getDuplicateCount(card, collection) {
+  return collection.filter(
+    c => c.baseId === card.baseId && c.rarity === card.rarity && c.id !== card.id
+  ).length;
+}
+
+// Perform upgrade: remove required dupes, return upgraded card + pruned collection
+export function upgradeCardWithDupes(card, collection) {
   const versionData = VERSION_PROGRESSION[card.version];
   if (!versionData) return null;
 
+  const required = getDuplicatesRequired(card);
+  const dupes = collection.filter(
+    c => c.baseId === card.baseId && c.rarity === card.rarity && c.id !== card.id
+  );
+  if (dupes.length < required) return null;
+
+  // Remove exactly `required` dupe copies
+  const toRemove = new Set(dupes.slice(0, required).map(c => c.id));
   const newStats = { ...card.stats };
   if (versionData.powerBoost) newStats.power += versionData.powerBoost;
   if (versionData.speedBoost) newStats.speed += versionData.speedBoost;
   if (versionData.intelligenceBoost) newStats.intelligence += versionData.intelligenceBoost;
   if (versionData.creativityBoost) newStats.creativity += versionData.creativityBoost;
 
-  return {
+  const upgradedCard = {
     ...card,
     version: versionData.next,
     stats: newStats,
     description: `${card.name} ${card.rarityInfo.name} edition - Version ${versionData.next}`
   };
+
+  const newCollection = collection
+    .filter(c => !toRemove.has(c.id))
+    .map(c => c.id === card.id ? upgradedCard : c);
+
+  return { upgradedCard, newCollection };
+}
+
+// Legacy stub kept for any import that still uses getUpgradeCost (returns null = max)
+export function getUpgradeCost() { return null; }
+export function upgradeCard(card) {
+  const versionData = VERSION_PROGRESSION[card.version];
+  if (!versionData) return null;
+  const newStats = { ...card.stats };
+  if (versionData.powerBoost) newStats.power += versionData.powerBoost;
+  if (versionData.speedBoost) newStats.speed += versionData.speedBoost;
+  if (versionData.intelligenceBoost) newStats.intelligence += versionData.intelligenceBoost;
+  if (versionData.creativityBoost) newStats.creativity += versionData.creativityBoost;
+  return { ...card, version: versionData.next, stats: newStats, description: `${card.name} ${card.rarityInfo.name} edition - Version ${versionData.next}` };
 }
 
 // Pack types with probabilities
@@ -207,30 +243,34 @@ export const PACK_TYPES = {
   BASIC: {
     name: 'Basic Pack',
     cost: 100,
-    cards: 3, // Reduced from 5
+    cards: 3,
     guaranteedRarity: 'COMMON',
-    probabilityOverrides: { MYTHIC: 0.001, LEGENDARY: 0.01, EPIC: 0.04, RARE: 0.20, COMMON: 0.749 } // Much lower high-rarity chances
+    // ~1 in 200 Epic, ~1 in 2000 Legendary, ~1 in 20000 Mythic
+    probabilityOverrides: { MYTHIC: 0.00005, LEGENDARY: 0.0005, EPIC: 0.005, RARE: 0.12, COMMON: 0.8745 }
   },
   PREMIUM: {
     name: 'Premium Pack',
     cost: 500,
     cards: 5,
     guaranteedRarity: 'RARE',
-    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.10, EPIC: 0.25, RARE: 0.40, COMMON: 0.23 }
+    // ~1 in 50 Epic, ~1 in 500 Legendary, ~1 in 2000 Mythic
+    probabilityOverrides: { MYTHIC: 0.0005, LEGENDARY: 0.002, EPIC: 0.02, RARE: 0.35, COMMON: 0.6275 }
   },
   MEGA: {
     name: 'Mega Pack',
     cost: 2000,
     cards: 10,
     guaranteedRarity: 'EPIC',
-    probabilityOverrides: { MYTHIC: 0.05, LEGENDARY: 0.20, EPIC: 0.40, RARE: 0.25, COMMON: 0.10 }
+    // ~1 in 10 Legendary, ~1 in 100 Mythic per card
+    probabilityOverrides: { MYTHIC: 0.01, LEGENDARY: 0.10, EPIC: 0.30, RARE: 0.40, COMMON: 0.19 }
   },
   LEGENDARY: {
     name: 'Legendary Pack',
     cost: 10000,
     cards: 5,
     guaranteedRarity: 'LEGENDARY',
-    probabilityOverrides: { MYTHIC: 0.15, LEGENDARY: 0.50, EPIC: 0.25, RARE: 0.08, COMMON: 0.02 }
+    // ~1 in 20 Mythic
+    probabilityOverrides: { MYTHIC: 0.05, LEGENDARY: 0.35, EPIC: 0.35, RARE: 0.20, COMMON: 0.05 }
   }
 };
 

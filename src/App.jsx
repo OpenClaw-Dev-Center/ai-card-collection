@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, User, LogOut, Play, Grid3X3, Package, Crown, Settings } from 'lucide-react';
+import { Wallet, User, LogOut, Play, Grid3x3, Package, Crown, Settings } from 'lucide-react';
 import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { CardCollection } from './components/CardCollection';

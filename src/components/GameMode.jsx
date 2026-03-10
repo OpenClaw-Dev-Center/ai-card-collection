@@ -4,16 +4,6 @@ import { ArrowLeft, Swords, Coins, Heart, Zap, Shield, Eye, Wind, Brain } from '
 import { useAuth } from '../hooks/useAuth';
 import { CARD_POOL, RARITIES, MOVES, calculateHP } from '../data/cards';
 
-// Ability icons mapping
-const ABILITY_ICONS = {
-  'Analytical Precision': Eye,
-  'Adaptive Learning': Brain,
-  'Multimodal Mastery': Sparkles,
-  'Versatile Tactician': Repeat,
-  'Efficient Operations': Zap,
-  'Precognitive Analysis': Eye
-};
-
 export function GameMode({ user, currency, onComplete, onBack }) {
   const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);

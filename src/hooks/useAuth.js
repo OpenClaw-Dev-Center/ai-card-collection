@@ -38,22 +38,22 @@ export function useAuth() {
     setUser(username);
     localStorage.setItem('currentUser', username);
 
-    // New accounts start with almost nothing - must play to earn
+    // Give 3 distinct starter Common cards so the player can battle immediately
     const collection = [];
-
-    // Give 1 random Common card (the absolute basics)
     const commonCards = CARD_POOL.filter(c => c.rarity === 'COMMON');
-    if (commonCards.length > 0) {
-      const randomCard = commonCards[Math.floor(Math.random() * commonCards.length)];
+    const shuffled = [...commonCards].sort(() => Math.random() - 0.5);
+    const starterCards = shuffled.slice(0, Math.min(3, shuffled.length));
+    starterCards.forEach((card, i) => {
       collection.push({
-        ...randomCard,
-        id: `${randomCard.baseId}-starter-${Date.now()}`
+        ...card,
+        id: `${card.baseId}-starter-${Date.now()}-${i}`
       });
-    }
+    });
 
     localStorage.setItem(`collection_${username}`, JSON.stringify(collection));
-    localStorage.setItem(`currency_${username}`, JSON.stringify(0)); // No starting credits
-    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 0, premium: 0, mega: 0, legendary: 0 }));
+    localStorage.setItem(`currency_${username}`, JSON.stringify(0));
+    // Give 1 basic pack so the player can expand their collection right away
+    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 1, premium: 0, mega: 0, legendary: 0 }));
     return { success: true };
   };
 

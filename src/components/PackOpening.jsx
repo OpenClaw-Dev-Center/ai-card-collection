@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Crown, Star, Zap } from 'lucide-react';
-import { CARD_POOL, RARITIES, PACK_TYPES, PRESTIGE_CRYSTAL_VALUES, VERSION_PROGRESSION } from '../data/cards';
+import { CARD_POOL, RARITIES, PACK_TYPES, PRESTIGE_CRYSTAL_VALUES, VERSION_PROGRESSION, getTotalDupesNeededToMax } from '../data/cards';
 
 // ── Rarity-weighted card picker ──────────────────────────────────────────────
 function pickCard(pack, slotIndex) {
@@ -191,15 +191,28 @@ export function PackOpening({ pack, onComplete, user }) {
     setSpeed(1);
     setShowResult(true);
 
-    // Check which pulled cards are already maxed in the player's collection
+    // Check which pulled cards would be excess (player already has enough to fully max out)
     const collection = user ? JSON.parse(localStorage.getItem(`collection_${user}`) || '[]') : [];
     let crystals = 0;
     const converted = new Set();
     cards.forEach((card, i) => {
-      const hasMaxed = collection.some(
-        c => c.baseId === card.baseId && c.rarity === card.rarity && !VERSION_PROGRESSION[c.version]
+      const sameCopies = collection.filter(
+        c => c.baseId === card.baseId && c.rarity === card.rarity
       );
-      if (hasMaxed) {
+      // Already owns a maxed copy
+      const hasMaxedCopy = sameCopies.some(c => !VERSION_PROGRESSION[c.version]);
+      // Has enough dupes to fully upgrade the best copy to max (dupes = copies - 1)
+      const hasEnoughToMax = sameCopies.length > 0 && (() => {
+        // Find the copy closest to max (fewest upgrades remaining)
+        let minNeeded = Infinity;
+        sameCopies.forEach(c => {
+          const needed = getTotalDupesNeededToMax(c);
+          if (needed < minNeeded) minNeeded = needed;
+        });
+        // Available dupes = all same copies (the pulled card counts as an extra)
+        return (sameCopies.length) >= minNeeded;
+      })();
+      if (hasMaxedCopy || hasEnoughToMax) {
         converted.add(i);
         crystals += PRESTIGE_CRYSTAL_VALUES[card.rarity] || 0;
       }
@@ -300,30 +313,32 @@ export function PackOpening({ pack, onComplete, user }) {
                 : <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full animate-pulse" />
               }
             </div>
-            {/* Stats row */}
-            {isRevealed && (
-              <div className="px-3 pb-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-gray-400">
-                <span>💥 {card.stats.power}</span>
-                <span>⚡ {card.stats.speed}</span>
-                <span>🧠 {card.stats.intelligence}</span>
-                <span>✨ {card.stats.creativity}</span>
-              </div>
-            )}
             <AnimatePresence>
               {isRevealed && (
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="absolute bottom-0 left-0 right-0 p-4"
+                  className="w-full px-3 pb-2"
                 >
-                  <div className="text-center">
-                    <h3 className="font-bold text-lg mb-1">{card.name}</h3>
-                    <div className="flex items-center justify-center gap-2 text-sm mb-2">
+                  {/* Name / version */}
+                  <div className="text-center mb-1.5">
+                    <h3 className="font-bold text-base leading-tight">{card.name}</h3>
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
                       <span>{card.provider}</span><span>•</span>
                       <span style={{ color: card.rarityInfo.color }}>v{card.version}</span>
                     </div>
-                    <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold" style={{ background: card.rarityInfo.color, color: 'white' }}>
+                  </div>
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-gray-300 mb-1.5">
+                    <span>💥 {card.stats.power}</span>
+                    <span>⚡ {card.stats.speed}</span>
+                    <span>🧠 {card.stats.intelligence}</span>
+                    <span>✨ {card.stats.creativity}</span>
+                  </div>
+                  {/* Rarity badge */}
+                  <div className="flex justify-center">
+                    <div className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold" style={{ background: card.rarityInfo.color, color: 'white' }}>
                       <Star className="w-3 h-3 fill-current" />{card.rarityInfo.name}
                     </div>
                   </div>

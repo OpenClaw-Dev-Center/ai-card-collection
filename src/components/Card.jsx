@@ -65,27 +65,12 @@ export function Card({ card, onClick, selected, showUpgrade }) {
             boxShadow: `0 0 20px ${rarityGlow[card.rarity]}, inset 0 0 20px rgba(0,0,0,0.3)`
           }}
         >
-          {/* Card image / gradient background */}
-          <div className="relative h-48 bg-gradient-to-br from-gray-800/50 to-gray-900/50 overflow-hidden">
-            <img
-              src={card.image}
-              alt={card.name}
-              className="w-full h-full object-cover opacity-80"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-            {/* Fallback gradient if image fails */}
-            <div
-              className="absolute inset-0 items-center justify-center text-4xl font-bold"
-              style={{
-                display: 'none',
-                background: `linear-gradient(135deg, ${card.rarityInfo.color}40, ${card.providerInfo.color}40)`
-              }}
-            >
-              {card.providerInfo.icon}
-            </div>
+          {/* Card icon display */}
+          <div
+            className="relative h-48 flex items-center justify-center overflow-hidden"
+            style={{ background: `linear-gradient(135deg, ${card.rarityInfo.color}30, ${card.providerInfo.color}20)` }}
+          >
+            <span className="text-7xl drop-shadow-lg select-none">{card.providerInfo.icon}</span>
 
             {/* Rarity indicator */}
             <div className="absolute top-2 right-2">

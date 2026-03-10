@@ -239,6 +239,18 @@ export function isCardMaxed(card) {
   return !VERSION_PROGRESSION[card.version];
 }
 
+// Total duplicate copies needed to upgrade a card from its current version all the way to max
+export function getTotalDupesNeededToMax(card) {
+  let total = 0;
+  let version = card.version;
+  while (VERSION_PROGRESSION[version]) {
+    const rarityBase = { COMMON: 2, RARE: 3, EPIC: 4, LEGENDARY: 6, MYTHIC: 10 }[card.rarity];
+    total += rarityBase * VERSION_PROGRESSION[version].tier;
+    version = VERSION_PROGRESSION[version].next;
+  }
+  return total;
+}
+
 // Legacy stub kept for any import that still uses getUpgradeCost (returns null = max)
 export function getUpgradeCost() { return null; }
 export function upgradeCard(card) {

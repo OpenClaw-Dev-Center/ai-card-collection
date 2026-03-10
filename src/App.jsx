@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, User, LogOut, Play, Grid3X3, Package, Crown, Settings } from 'lucide-react';
+import {
+  Wallet as WalletIcon,
+  User as UserIcon,
+  LogOut as LogOutIcon,
+  Play as PlayIcon,
+  Grid3x3 as GridIcon,
+  Package as PackageIcon,
+  Crown as CrownIcon,
+  Settings as SettingsIcon
+} from 'lucide-react';
 import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { CardCollection } from './components/CardCollection';
 import { PackOpening } from './components/PackOpening';
 import { GameMode } from './components/GameMode';
+import { Leaderboard } from './components/Leaderboard';
 import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
 
@@ -76,6 +86,8 @@ function App() {
           updatePacks('basic', 1);
           setView('dashboard');
         }} onBack={() => setView('dashboard')} />;
+      case 'leaderboard':
+        return <Leaderboard user={user} onBack={() => setView('dashboard')} />;
       case 'pack-opening':
         return openingPack && (
           <PackOpening

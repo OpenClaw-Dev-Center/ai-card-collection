@@ -256,6 +256,7 @@ export const MOVES = {
     stat: 'speed',
     description: 'Take a defensive stance. Reduces incoming damage by 70% this turn.',
     energyCost: 15,
+    damageFactor: 0,
     defenseReduction: 0.7
   },
   FOCUS: {
@@ -265,6 +266,7 @@ export const MOVES = {
     stat: 'intelligence',
     description: 'Channel intelligence to power up your next Strike. Bonus scales with Intelligence.',
     energyCost: 20,
+    damageFactor: 0,
     bonusFactor: 0.01 // bonus multiplier = int * 0.01 (i.e., 80 int = 0.8 = +80% damage)
   },
   BLITZ: {

@@ -453,7 +453,7 @@ export function GameMode({ user, currency, onComplete, onBack }) {
 
     // Apply damage
     setOpponentHP(prev => Math.max(0, prev - actualPlayerDamage));
-    setPlayerHP(prev => Math.max(0, prev - actualPlayerDamage));
+    setPlayerHP(prev => Math.max(0, prev - actualOpponentDamage));
 
     spawnDamageNumber(Math.floor(actualPlayerDamage), true);
     spawnDamageNumber(Math.floor(actualOpponentDamage), false);

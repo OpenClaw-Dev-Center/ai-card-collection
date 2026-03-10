@@ -857,7 +857,7 @@ export function GameMode({ user, currency, onComplete, onBack }) {
           <div className="text-center text-gray-400">
             Turn {turnCount} / 15
           </div>
-        </motion.div>
+        </div>
       )}
 
       {/* Result */}

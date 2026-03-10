@@ -183,7 +183,7 @@ export function PackOpening({ pack, onComplete, user }) {
         {isRevealed && card.rarity !== 'COMMON' && (
           <div className="card-shine absolute inset-0 pointer-events-none" />
         )}
-      </motion.div>
+      </div>
     </motion.div>
   );
 

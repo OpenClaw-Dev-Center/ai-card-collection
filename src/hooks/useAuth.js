@@ -1,0 +1,46 @@
+import { useState, useEffect } from 'react';
+
+export function useAuth() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('currentUser');
+    if (saved) {
+      setUser(saved);
+    }
+  }, []);
+
+  const login = (username, password) => {
+    const users = JSON.parse(localStorage.getItem('users') || '{}');
+    if (users[username] && users[username].password === password) {
+      setUser(username);
+      localStorage.setItem('currentUser', username);
+      return { success: true };
+    }
+    return { success: false, error: 'Invalid credentials' };
+  };
+
+  const register = (username, password) => {
+    const users = JSON.parse(localStorage.getItem('users') || '{}');
+    if (users[username]) {
+      return { success: false, error: 'User already exists' };
+    }
+    users[username] = { password, createdAt: Date.now() };
+    localStorage.setItem('users', JSON.stringify(users));
+    setUser(username);
+    localStorage.setItem('currentUser', username);
+    // Give starting packs
+    const collection = [];
+    localStorage.setItem(`collection_${username}`, JSON.stringify(collection));
+    localStorage.setItem(`currency_${username}`, JSON.stringify(1000));
+    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 3, premium: 0, mega: 0, legendary: 0 }));
+    return { success: true };
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('currentUser');
+  };
+
+  return { user, login, register, logout };
+}

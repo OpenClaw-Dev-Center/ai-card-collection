@@ -135,7 +135,6 @@ function App() {
             user={user}
             onComplete={(reward) => {
               updateCurrency(reward);
-              updatePacks('premium', 1);
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}

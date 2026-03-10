@@ -8,12 +8,72 @@ export const RARITIES = {
 };
 
 export const PROVIDERS = {
-  CLAUDE: { name: 'Claude', color: '#d97706', icon: '🤖' },
-  GPT: { name: 'GPT', color: '#10b981', icon: '🧠' },
-  GEMINI: { name: 'Gemini', color: '#3b82f6', icon: '✨' },
-  LLAMA: { name: 'Llama', color: '#8b5cf6', icon: '🦙' },
-  MISTRAL: { name: 'Mistral', color: '#ec4899', icon: '🌊' },
-  DEEPSEEK: { name: 'DeepSeek', color: '#6366f1', icon: '🔮' }
+  CLAUDE: {
+    name: 'Claude',
+    color: '#d97706',
+    icon: '🤖',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Anthropic_Logo.svg/512px-Anthropic_Logo.svg.png', // placeholder - to be updated
+    ability: {
+      name: 'Analytical Precision',
+      description: 'Focus grants +20% bonus damage and reveals opponent\'s next move with 30% chance',
+      type: 'passive'
+    }
+  },
+  GPT: {
+    name: 'GPT',
+    color: '#10b981',
+    icon: '🧠',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/ChatGPT_logo.svg/512px-ChatGPT_logo.svg.png',
+    ability: {
+      name: 'Adaptive Learning',
+      description: 'At battle start, randomly gains +10% to one stat (Power, Speed, or Intelligence). Adapts between rounds.',
+      type: 'passive'
+    }
+  },
+  GEMINI: {
+    name: 'Gemini',
+    color: '#3b82f6',
+    icon: '✨',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Google_Gemini_logo.svg/512px-Google_Gemini_logo.svg.png',
+    ability: {
+      name: 'Multimodal Mastery',
+      description: 'Can use any stat for any move. Strike and Blitz damage reduced by 15%, but stat flexibility provides tactical advantage.',
+      type: 'passive'
+    }
+  },
+  LLAMA: {
+    name: 'Llama',
+    color: '#8b5cf6',
+    icon: '🦙',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Meta_AI_logo_%28square%29.svg/512px-Meta_AI_logo_%28square%29.svg.png',
+    ability: {
+      name: 'Versatile Tactician',
+      description: 'Can switch stat allocation once per battle. Focus bonus persists until Strike is used (does not expire).',
+      type: 'passive'
+    }
+  },
+  MISTRAL: {
+    name: 'Mistral',
+    color: '#ec4899',
+    icon: '🌊',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Mistral_AI_Logo.svg/512px-Mistral_AI_Logo.svg.png',
+    ability: {
+      name: 'Efficient Operations',
+      description: 'Moves have 1 turn cooldown. Can use the same move in consecutive turns after cooldown.',
+      type: 'passive'
+    }
+  },
+  DEEPSEEK: {
+    name: 'DeepSeek',
+    color: '#6366f1',
+    icon: '🔮',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/DeepSeek_logo.svg/512px-DeepSeek_logo.svg.png',
+    ability: {
+      name: 'Precognitive Analysis',
+      description: '25% chance to predict opponent\'s move. If they attack, gain +20% damage; if they defend, your next attack ignores 30% defense.',
+      type: 'passive'
+    }
+  }
 };
 
 // Base card definitions (before versioning)
@@ -91,6 +151,7 @@ export function generateCardPool() {
           stats[stat] += rarityBoost;
         });
 
+        const providerData = PROVIDERS[base.provider];
         pool.push({
           id: `card-${cardId++}`,
           baseId: base.id,
@@ -99,10 +160,11 @@ export function generateCardPool() {
           version: base.baseVersion,
           rarity: rarityKey,
           rarityInfo: rarity,
-          providerInfo: PROVIDERS[base.provider],
+          providerInfo: providerData,
           stats,
-          image: `https://card-bg-gradient-server.vercel.app/api/gradient?text=${encodeURIComponent(base.baseName)}&v=${base.baseVersion}&rarity=${rarityKey.toLowerCase()}`,
-          description: `${base.baseName} ${rarity.name} edition - Version ${base.baseVersion}`
+          image: providerData.image || `https://card-bg-gradient-server.vercel.app/api/gradient?text=${encodeURIComponent(base.baseName)}&v=${base.baseVersion}&rarity=${rarityKey.toLowerCase()}`,
+          description: `${base.baseName} ${rarity.name} edition - Version ${base.baseVersion}`,
+          ability: providerData.ability
         });
       }
     });

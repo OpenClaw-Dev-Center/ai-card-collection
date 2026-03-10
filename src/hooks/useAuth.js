@@ -26,7 +26,14 @@ export function useAuth() {
     if (users[username]) {
       return { success: false, error: 'User already exists' };
     }
-    users[username] = { password, createdAt: Date.now(), playtimeHours: 0 };
+    users[username] = {
+      password,
+      createdAt: Date.now(),
+      playtimeHours: 0,
+      wins: 0,
+      losses: 0,
+      totalBattles: 0
+    };
     localStorage.setItem('users', JSON.stringify(users));
     setUser(username);
     localStorage.setItem('currentUser', username);
@@ -55,5 +62,21 @@ export function useAuth() {
     localStorage.removeItem('currentUser');
   };
 
-  return { user, login, register, logout };
+  const recordBattle = (result, reward) => {
+    // result: 'win', 'lose', 'draw'
+    if (!user) return;
+    const users = JSON.parse(localStorage.getItem('users') || '{}');
+    if (users[user]) {
+      users[user].totalBattles = (users[user].totalBattles || 0) + 1;
+      if (result === 'win') {
+        users[user].wins = (users[user].wins || 0) + 1;
+      } else if (result === 'lose') {
+        users[user].losses = (users[user].losses || 0) + 1;
+      }
+      users[user].playtimeHours = (users[user].playtimeHours || 0) + 0.1;
+      localStorage.setItem('users', JSON.stringify(users));
+    }
+  };
+
+  return { user, login, register, logout, recordBattle };
 }

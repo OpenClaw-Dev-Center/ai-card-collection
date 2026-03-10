@@ -9,6 +9,23 @@ import { PACK_TYPES } from '../data/cards';
 export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackOpen }) {
   const packEntries = Object.entries(PACK_TYPES);
 
+  // Get user stats from localStorage
+  const users = JSON.parse(localStorage.getItem('users') || '{}');
+  const userStats = user ? users[user] : {};
+  const playtimeHours = userStats.playtimeHours || 0;
+  const totalWins = userStats.wins || 0;
+  const totalLosses = userStats.losses || 0;
+  const collectionCount = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]').length;
+  const uniqueModels = new Set(JSON.parse(localStorage.getItem(`collection_${user}`) || '[]')
+    .map(c => c.baseId)).size;
+
+  // Format playtime
+  const formatPlaytime = (hours) => {
+    const h = Math.floor(hours);
+    const m = Math.floor((hours % 1) * 60);
+    return `${h}h ${m}m`;
+  };
+
   return (
     <div className="min-h-screen p-6">
       {/* Header */}
@@ -88,10 +105,10 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
           className="grid grid-cols-2 md:grid-cols-4 gap-4"
         >
           {[
-            { label: 'Cards Owned', value: '47', icon: Grid3X3, color: 'from-blue-500 to-cyan-500' },
-            { label: 'Packs', value: packs.basic + packs.premium + packs.mega + packs.legendary, icon: Package, color: 'from-purple-500 to-pink-500' },
-            { label: 'Unique Models', value: '12', icon: Zap, color: 'from-yellow-500 to-orange-500' },
-            { label: 'Playtime', value: '2h 15m', icon: Trophy, color: 'from-green-500 to-teal-500' }
+            { label: 'Cards Owned', value: collectionCount.toString(), icon: Grid3X3, color: 'from-blue-500 to-cyan-500' },
+            { label: 'Packs', value: (packs.basic + packs.premium + packs.mega + packs.legendary).toString(), icon: Package, color: 'from-purple-500 to-pink-500' },
+            { label: 'Wins', value: totalWins.toString(), icon: Trophy, color: 'from-yellow-500 to-orange-500' },
+            { label: 'Playtime', value: formatPlaytime(playtimeHours), icon: Crown, color: 'from-green-500 to-teal-500' }
           ].map((stat, idx) => (
             <motion.div
               key={stat.label}
@@ -108,6 +125,50 @@ export function Dashboard({ user, currency, packs, onLogout, onNavigate, onPackO
               <div className="text-sm text-gray-400">{stat.label}</div>
             </motion.div>
           ))}
+        </motion.div>
+
+        {/* Quick Actions */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="grid grid-cols-2 md:grid-cols-3 gap-4"
+        >
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onNavigate('collection')}
+            className="bg-gradient-to-r from-blue-600/80 to-cyan-600/80 hover:from-blue-600 hover:to-cyan-600 backdrop-blur rounded-2xl p-6 border border-blue-500/30 text-left transition-all"
+          >
+            <Grid3X3 className="w-8 h-8 text-blue-300 mb-2" />
+            <div className="font-bold text-lg">Collection</div>
+            <div className="text-sm text-blue-200">View & upgrade cards</div>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onNavigate('leaderboard')}
+            className="bg-gradient-to-r from-yellow-600/80 to-orange-600/80 hover:from-yellow-600 hover:to-orange-600 backdrop-blur rounded-2xl p-6 border border-yellow-500/30 text-left transition-all"
+          >
+            <Trophy className="w-8 h-8 text-yellow-300 mb-2" />
+            <div className="font-bold text-lg">Leaderboard</div>
+            <div className="text-sm text-yellow-200">See top players</div>
+          </motion.button>
+
+          <div className="bg-gradient-to-r from-green-600/80 to-teal-600/80 backdrop-blur rounded-2xl p-6 border border-green-500/30">
+            <Play className="w-8 h-8 text-green-300 mb-2" />
+            <div className="font-bold text-lg">Battle</div>
+            <div className="text-sm text-green-200">Fight with your cards</div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onNavigate('game')}
+              className="mt-3 w-full py-2 bg-white/20 hover:bg-white/30 rounded-lg font-medium text-sm transition-colors"
+            >
+              Start Battle
+            </motion.button>
+          </div>
         </motion.div>
 
         {/* Packs Section */}

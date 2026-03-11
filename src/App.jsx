@@ -92,30 +92,20 @@ function App() {
     }
   };
 
-  const handleLogin = async (email, password) => {
-    try {
-      const result = await api.login(email, password);
-      setUser({
-        id: result.user.id,
-        username: result.user.username,
-        email: result.user.email
-      });
-    } catch (err) {
-      throw err;
-    }
+  const handleLogin = (user) => {
+    setUser({
+      id: user.id,
+      username: user.username,
+      email: user.email
+    });
   };
 
-  const handleRegister = async (username, email, password) => {
-    try {
-      const result = await api.register(username, email, password);
-      setUser({
-        id: result.user.id,
-        username: result.user.username,
-        email: result.user.email
-      });
-    } catch (err) {
-      throw err;
-    }
+  const handleRegister = (user) => {
+    setUser({
+      id: user.id,
+      username: user.username,
+      email: user.email
+    });
   };
 
   const handleLogout = async () => {

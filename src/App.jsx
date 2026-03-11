@@ -87,8 +87,11 @@ function App() {
         localStorage.setItem(`collection_${userId}`, JSON.stringify(profile.collection));
       }
     } catch (err) {
-      console.error('Failed to sync from backend:', err);
-      setSyncError('Using offline data');
+      // 404 just means no server-side state yet — keep local data silently
+      if (!err.message?.includes('Profile not found') && !err.message?.includes('404')) {
+        console.error('Failed to sync from backend:', err);
+        setSyncError('Using offline data');
+      }
     }
   };
 

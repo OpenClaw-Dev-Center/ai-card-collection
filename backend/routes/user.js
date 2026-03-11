@@ -36,11 +36,19 @@ router.get('/:userId', authenticate, async (req, res) => {
       [userId]
     );
 
+    let profile;
     if (profileResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Profile not found' });
+      // Auto-create profile for users that pre-date profile creation
+      const insertResult = await query(
+        `INSERT INTO user_profiles (user_id, credits, packs, collection, stats)
+         VALUES ($1, 0, '{"basic": 1}'::jsonb, '[]'::jsonb, '{"wins": 0, "losses": 0, "totalBattles": 0, "playtimeHours": 0}'::jsonb)
+         RETURNING *`,
+        [userId]
+      );
+      profile = insertResult.rows[0];
+    } else {
+      profile = profileResult.rows[0];
     }
-
-    const profile = profileResult.rows[0];
 
     res.json({
       credits: profile.credits,

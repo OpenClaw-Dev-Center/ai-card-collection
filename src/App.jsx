@@ -8,9 +8,11 @@ import {
   Grid3x3 as GridIcon,
   Package as PackageIcon,
   Crown as CrownIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
-import { Auth } from './components/Auth';
+import { LoginRegister } from './components/LoginRegister';
 import { Dashboard } from './components/Dashboard';
 import { CardCollection } from './components/CardCollection';
 import { PackOpening } from './components/PackOpening';
@@ -20,9 +22,11 @@ import { Leaderboard } from './components/Leaderboard';
 import { ExperienceRoad } from './components/ExperienceRoad';
 import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
+import { api } from './services/api';
+import { battleSocket } from './services/battleSocket';
 
 function App() {
-  const { user, login, register, logout } = useAuth();
+  const { user, login, register, logout, setUser } = useAuth();
   const {
     currency, packs, updateCurrency, updatePacks,
     prestigeCrystals, updatePrestigeCrystals,
@@ -30,57 +34,140 @@ function App() {
     addXp, claimReward,
   } = useGame(user);
   const [view, setView] = useState(user ? 'dashboard' : 'auth');
-  // Track which pack key is being opened so we can deduct earned packs
-  const [openingPack, setOpeningPack] = useState(null); // { ...packType, packKey }
+  const [openingPack, setOpeningPack] = useState(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [syncError, setSyncError] = useState(null);
+
+  // Check backend connectivity
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const res = await fetch(import.meta.env.VITE_API_URL || 'http://localhost:3001/health');
+        setIsOnline(res.ok);
+      } catch {
+        setIsOnline(false);
+      }
+    };
+    checkBackend();
+    const interval = setInterval(checkBackend, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Initialize WebSocket when user logs in
+  useEffect(() => {
+    if (user && user.id) {
+      battleSocket.connect(user.id);
+      battleSocket.on('battle_found', (battleId, opponent) => {
+        console.log('Battle found:', battleId, opponent);
+        // TODO: Navigate to battle view with battleId
+      });
+      return () => battleSocket.disconnect();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user) {
       setView('dashboard');
+      // Sync user data from backend when online
+      if (isOnline) {
+        syncFromBackend(user.id);
+      }
     } else {
       setView('auth');
     }
   }, [user]);
 
-  const handlePackOpen = (packType, packKey) => {
-    const ownedCount = packs[packKey] || 0;
-    if (ownedCount > 0) {
-      // Consume a pre-owned copy (free — works for both reward-only and regular packs)
-      setOpeningPack({ ...packType, packKey, fromStock: true });
-      setView('pack-opening');
-    } else if (!packType.rewardOnly && currency >= packType.cost) {
-      // Buy fresh with currency
-      setOpeningPack({ ...packType, packKey, fromStock: false });
-      setView('pack-opening');
+  const syncFromBackend = async (userId) => {
+    try {
+      const profile = await api.getProfile(userId);
+      // Apply backend data to local state
+      localStorage.setItem(`user_${userId}`, JSON.stringify(profile));
+      // Could also update auth/user store with latest
+    } catch (err) {
+      console.error('Failed to sync from backend:', err);
+      setSyncError('Using offline data');
     }
   };
 
-  const handlePackComplete = (newCards, crystalsEarned = 0) => {
+  const handleLogin = async (email, password) => {
+    try {
+      const result = await api.login(email, password);
+      setUser({
+        id: result.user.id,
+        username: result.user.username,
+        email: result.user.email
+      });
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const handleRegister = async (username, email, password) => {
+    try {
+      const result = await api.register(username, email, password);
+      setUser({
+        id: result.user.id,
+        username: result.user.username,
+        email: result.user.email
+      });
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const handleLogout = async () => {
+    battleSocket.leaveQueue();
+    api.logout();
+    setUser(null);
+  };
+
+  const handlePackComplete = async (newCards, crystalsEarned = 0) => {
     const finishing = openingPack;
     setOpeningPack(null);
     setView('dashboard');
 
     if (finishing.fromStock) {
-      // Consume one pre-owned pack token
       updatePacks(finishing.packKey, -1);
     } else {
-      // Deduct purchase cost (no stock was used)
       updateCurrency(-finishing.cost);
     }
 
-    if (user) {
-      const savedCollection = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
-      const updatedCollection = [...savedCollection, ...newCards];
-      localStorage.setItem(`collection_${user}`, JSON.stringify(updatedCollection));
-    }
+    // Save to backend if user is logged in and online
+    if (user && user.id) {
+      try {
+        // Update profile with new collection and crystals
+        const collectionKey = `collection_${user.id}`;
+        const savedCollectionStr = localStorage.getItem(collectionKey) || '[]';
+        const savedCollection = JSON.parse(savedCollectionStr);
+        const updatedCollection = [...savedCollection, ...newCards];
+        localStorage.setItem(collectionKey, JSON.stringify(updatedCollection));
 
-    if (crystalsEarned > 0) {
-      updatePrestigeCrystals(crystalsEarned);
+        if (crystalsEarned > 0) {
+          updatePrestigeCrystals(crystalsEarned);
+        }
+
+        if (isOnline) {
+          await api.updateProfile(user.id, {
+            collection: updatedCollection,
+            packs: packs,
+            prestigeCrystals: prestigeCrystals + crystalsEarned
+          });
+        }
+      } catch (err) {
+        console.error('Failed to sync pack complete:', err);
+        setSyncError('Changes saved locally only');
+      }
+    } else {
+      // Offline/local only
+      const savedCollectionStr = localStorage.getItem(`collection_${user.username}`) || '[]';
+      const savedCollection = JSON.parse(savedCollectionStr);
+      const updatedCollection = [...savedCollection, ...newCards];
+      localStorage.setItem(`collection_${user.username}`, JSON.stringify(updatedCollection));
     }
   };
 
   const navigateTo = (target) => {
     if (target === 'deck-battle' && !unlockedFeatures.includes('deck-battle')) {
-      // Not yet unlocked – bounce back with a message handled in dashboard
       setView('dashboard');
       return;
     }
@@ -90,7 +177,7 @@ function App() {
   const viewContent = () => {
     switch (view) {
       case 'auth':
-        return <Auth onLogin={login} onRegister={register} />;
+        return <LoginRegister onLogin={handleLogin} onRegister={handleRegister} />;
       case 'dashboard':
         return (
           <Dashboard
@@ -102,9 +189,10 @@ function App() {
             level={level}
             unclaimedCount={unclaimedCount}
             unlockedFeatures={unlockedFeatures}
-            onLogout={logout}
+            onLogout={handleLogout}
             onNavigate={navigateTo}
             onPackOpen={handlePackOpen}
+            isOnline={isOnline}
           />
         );
       case 'collection':
@@ -123,6 +211,9 @@ function App() {
             onComplete={(reward) => {
               updateCurrency(reward);
               updatePacks('basic', 1);
+              if (user && user.id && isOnline) {
+                api.recordBattleResult(user.id, 'win', 0, null); // simplified
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -135,6 +226,9 @@ function App() {
             user={user}
             onComplete={(reward) => {
               updateCurrency(reward);
+              if (user && user.id && isOnline) {
+                api.recordBattleResult(user.id, 'win', 0, null);
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -147,6 +241,7 @@ function App() {
             user={user}
             unlockedFeatures={unlockedFeatures}
             onBack={() => setView('dashboard')}
+            isOnline={isOnline}
           />
         );
       case 'experience':
@@ -175,21 +270,24 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] via-[#1a1a3e] to-[#0a0a1a] text-white relative overflow-hidden">
-      {/* Animated background particles */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-2 h-2 bg-blue-500/20 rounded-full particle"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${3 + Math.random() * 2}s`
-            }}
-          />
-        ))}
+      {/* Backend status indicator */}
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        {isOnline ? (
+          <span className="flex items-center gap-1 text-green-400 text-sm">
+            <Wifi size={16} /> Online
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-yellow-400 text-sm">
+            <WifiOff size={16} /> Offline (local only)
+          </span>
+        )}
       </div>
+
+      {syncError && (
+        <div className="fixed top-12 right-4 z-50 bg-yellow-500/20 border border-yellow-500 text-yellow-200 px-3 py-2 rounded-lg text-sm max-w-sm">
+          {syncError}
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         <motion.div

@@ -1,0 +1,21 @@
+{
+  "name": "ai-card-collection-api",
+  "version": "1.0.0",
+  "description": "Backend API for AI Card Collection multiplayer features",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0",
+    "ws": "^8.18.0",
+    "uuid": "^9.0.1"
+  }
+}

@@ -115,6 +115,24 @@ export function useGame(user) {
     return true;
   };
 
+  // Load authoritative state from backend profile response
+  const loadFromBackend = (profile) => {
+    const key = getUserKey(user);
+    if (!profile || !key) return;
+    const newCurrency = profile.credits ?? currency;
+    const newPacks = profile.packs ? { basic: 0, premium: 0, mega: 0, legendary: 0, ...profile.packs } : packs;
+    const newCrystals = profile.prestigeCrystals ?? prestigeCrystals;
+    const newXp = profile.stats?.xp ?? xp;
+    setCurrency(newCurrency);
+    setPacks(newPacks);
+    setPrestigeCrystals(newCrystals);
+    setXp(newXp);
+    localStorage.setItem(`currency_${key}`, JSON.stringify(newCurrency));
+    localStorage.setItem(`packs_${key}`, JSON.stringify(newPacks));
+    localStorage.setItem(`prestige_${key}`, JSON.stringify(newCrystals));
+    localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
+  };
+
   const unclaimedCount = Object.keys(LEVEL_REWARDS).filter(
     l => Number(l) <= level && !claimedLevels.includes(Number(l))
   ).length;
@@ -123,6 +141,6 @@ export function useGame(user) {
     currency, packs, updateCurrency, updatePacks,
     prestigeCrystals, updatePrestigeCrystals,
     xp, level, unlockedFeatures, claimedLevels, unclaimedCount, loading,
-    addXp, claimReward,
+    addXp, claimReward, loadFromBackend,
   };
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { battleSocket } from '../services/battleSocket';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
@@ -26,7 +27,7 @@ export function useAuth() {
 
       // Validate token with backend
       try {
-        const res = await api.getProfile(userIdFromToken(token));
+        const res = await api.me();
         setUser(res.user);
       } catch (err) {
         console.error('Auth validation failed:', err);

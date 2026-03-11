@@ -31,7 +31,7 @@ function App() {
     currency, packs, updateCurrency, updatePacks,
     prestigeCrystals, updatePrestigeCrystals,
     xp, level, unlockedFeatures, claimedLevels, unclaimedCount,
-    addXp, claimReward,
+    addXp, claimReward, loadFromBackend,
   } = useGame(user);
   const [view, setView] = useState(user ? 'dashboard' : 'auth');
   const [openingPack, setOpeningPack] = useState(null);
@@ -42,7 +42,8 @@ function App() {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const res = await fetch(import.meta.env.VITE_API_URL || 'http://localhost:3001/health');
+        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+        const res = await fetch(apiBase.replace('/api', '/health'));
         setIsOnline(res.ok);
       } catch {
         setIsOnline(false);
@@ -80,9 +81,11 @@ function App() {
   const syncFromBackend = async (userId) => {
     try {
       const profile = await api.getProfile(userId);
-      // Apply backend data to local state
-      localStorage.setItem(`user_${userId}`, JSON.stringify(profile));
-      // Could also update auth/user store with latest
+      loadFromBackend(profile);
+      // Cache collection for CardCollection component
+      if (profile.collection) {
+        localStorage.setItem(`collection_${userId}`, JSON.stringify(profile.collection));
+      }
     } catch (err) {
       console.error('Failed to sync from backend:', err);
       setSyncError('Using offline data');
@@ -147,10 +150,14 @@ function App() {
         }
 
         if (isOnline) {
+          const newPacks = finishing.fromStock
+            ? { ...packs, [finishing.packKey]: Math.max(0, (packs[finishing.packKey] || 0) - 1) }
+            : packs;
           await api.updateProfile(user.id, {
             collection: updatedCollection,
-            packs: packs,
-            prestigeCrystals: prestigeCrystals + crystalsEarned
+            packs: newPacks,
+            prestigeCrystals: prestigeCrystals + crystalsEarned,
+            credits: currency - (finishing.fromStock ? 0 : (finishing.cost || 0))
           });
         }
       } catch (err) {

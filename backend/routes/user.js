@@ -65,7 +65,7 @@ router.put('/:userId', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Can only update your own profile' });
     }
 
-    const { credits, packs, collection, deckPresets, stats } = req.body;
+    const { credits, prestigeCrystals, packs, collection, deckPresets, stats } = req.body;
 
     // Build dynamic update
     const updates = [];
@@ -75,6 +75,10 @@ router.put('/:userId', authenticate, async (req, res) => {
     if (credits !== undefined) {
       updates.push(`credits = $${paramCount++}`);
       values.push(credits);
+    }
+    if (prestigeCrystals !== undefined) {
+      updates.push(`prestige_crystals = $${paramCount++}`);
+      values.push(prestigeCrystals);
     }
     if (packs !== undefined) {
       updates.push(`packs = $${paramCount++}::jsonb`);

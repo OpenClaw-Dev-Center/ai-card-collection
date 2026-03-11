@@ -34,13 +34,11 @@ router.get('/', async (req, res) => {
     );
 
     // Get overall stats
-    const statsResult = await query(
-      `SELECT COUNT(*) as total_players FROM users;
-       SELECT COUNT(*) as total_battles FROM battles;`
-    );
+    const playersResult = await query('SELECT COUNT(*) as total_players FROM users');
+    const battlesResult = await query('SELECT COUNT(*) as total_battles FROM battles');
 
-    const totalPlayers = parseInt(statsResult.rows[0].total_players);
-    const totalBattles = parseInt(statsResult.rows[1].total_battles);
+    const totalPlayers = parseInt(playersResult.rows[0].total_players);
+    const totalBattles = parseInt(battlesResult.rows[0].total_battles);
 
     res.json({
       leaderboard: result.rows.map(row => ({

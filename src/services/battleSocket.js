@@ -11,7 +11,7 @@ class BattleSocket {
   connect(userId) {
     this.userId = userId;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.host}`;
+    const wsUrl = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.host}/socket`;
 
     this.ws = new WebSocket(wsUrl);
 

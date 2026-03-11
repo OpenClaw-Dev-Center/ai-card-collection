@@ -1,6 +1,3 @@
-import { get } from 'svelte/store';
-import { user } from '../stores/auth.js';
-
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 class ApiClient {
@@ -33,7 +30,6 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      // Token expired or invalid
       this.setToken(null);
       window.location.href = '/login';
       throw new Error('Unauthorized');
@@ -47,7 +43,6 @@ class ApiClient {
     return data;
   }
 
-  // Auth
   async register(username, email, password) {
     const res = await this.request('/auth/register', {
       method: 'POST',
@@ -58,7 +53,7 @@ class ApiClient {
   }
 
   async login(email, password) {
-    const res = await this.request('/auth/login', {
+    const res = this.request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
     });
@@ -70,7 +65,6 @@ class ApiClient {
     this.setToken(null);
   }
 
-  // User profile
   async getProfile(userId) {
     return this.request(`/users/${userId}`);
   }
@@ -89,7 +83,6 @@ class ApiClient {
     });
   }
 
-  // Leaderboard
   async getLeaderboard(sort = 'active', limit = 100) {
     return this.request(`/leaderboard?sort=${sort}&limit=${limit}`);
   }

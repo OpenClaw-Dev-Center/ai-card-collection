@@ -1,81 +1,72 @@
-import { useState, useEffect } from 'react';
-import { CARD_POOL } from '../data/cards';
+import { useState, useEffect, useCallback } from 'react';
+import { api } from '../services/api';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  // Initialize auth state
   useEffect(() => {
-    const saved = localStorage.getItem('currentUser');
-    if (saved) {
-      setUser(saved);
-    }
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        // Check for legacy localStorage user (offline fallback)
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+          try {
+            const parsed = JSON.parse(savedUser);
+            setUser(parsed);
+          } catch {
+            localStorage.removeItem('currentUser');
+          }
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Validate token with backend
+      try {
+        const res = await api.getProfile(userIdFromToken(token));
+        setUser(res.user);
+      } catch (err) {
+        console.error('Auth validation failed:', err);
+        localStorage.removeItem('token');
+        setUser(null);
+      }
+      setLoading(false);
+    };
+
+    initAuth();
   }, []);
 
-  const login = (username, password) => {
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    if (users[username] && users[username].password === password) {
-      setUser(username);
-      localStorage.setItem('currentUser', username);
-      return { success: true };
-    }
-    return { success: false, error: 'Invalid credentials' };
-  };
+  const login = useCallback(async (email, password) => {
+    const result = await api.login(email, password);
+    setUser(result.user);
+    return result;
+  }, []);
 
-  const register = (username, password) => {
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    if (users[username]) {
-      return { success: false, error: 'User already exists' };
-    }
-    users[username] = {
-      password,
-      createdAt: Date.now(),
-      playtimeHours: 0,
-      wins: 0,
-      losses: 0,
-      totalBattles: 0
-    };
-    localStorage.setItem('users', JSON.stringify(users));
-    setUser(username);
-    localStorage.setItem('currentUser', username);
+  const register = useCallback(async (username, email, password) => {
+    const result = await api.register(username, email, password);
+    setUser(result.user);
+    return result;
+  }, []);
 
-    // Give 3 distinct starter Common cards so the player can battle immediately
-    const collection = [];
-    const commonCards = CARD_POOL.filter(c => c.rarity === 'COMMON');
-    const shuffled = [...commonCards].sort(() => Math.random() - 0.5);
-    const starterCards = shuffled.slice(0, Math.min(3, shuffled.length));
-    starterCards.forEach((card, i) => {
-      collection.push({
-        ...card,
-        id: `${card.baseId}-starter-${Date.now()}-${i}`
-      });
-    });
-
-    localStorage.setItem(`collection_${username}`, JSON.stringify(collection));
-    localStorage.setItem(`currency_${username}`, JSON.stringify(0));
-    // Give 1 basic pack so the player can expand their collection right away
-    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 1, premium: 0, mega: 0, legendary: 0 }));
-    return { success: true };
-  };
-
-  const recordBattle = (result) => {
-    if (!user) return;
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    if (users[user]) {
-      users[user].totalBattles = (users[user].totalBattles || 0) + 1;
-      users[user].playtimeHours = (users[user].playtimeHours || 0) + 0.1;
-      if (result === 'win') {
-        users[user].wins = (users[user].wins || 0) + 1;
-      } else if (result === 'loss') {
-        users[user].losses = (users[user].losses || 0) + 1;
-      }
-      localStorage.setItem('users', JSON.stringify(users));
-    }
-  };
-
-  const logout = () => {
+  const logout = useCallback(() => {
+    api.logout();
+    battleSocket.leaveQueue();
     setUser(null);
-    localStorage.removeItem('currentUser');
+  }, []);
+
+  // Helper: extract userId from JWT (for quick validation before API call)
+  // This is a simple base64 decode - in production might need verification
+  const userIdFromToken = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.userId;
+    } catch {
+      return null;
+    }
   };
 
-  return { user, login, register, logout, recordBattle };
+  return { user, loading, login, register, logout };
 }

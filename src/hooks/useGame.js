@@ -1,49 +1,9 @@
 import { useState, useEffect } from 'react';
 import { levelFromXp, xpToNextLevel, xpForLevel, LEVEL_REWARDS } from '../data/cards';
 
-export function useAuth() {
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('currentUser');
-    if (saved) {
-      setUser(saved);
-    }
-  }, []);
-
-  const login = (username, password) => {
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    if (users[username] && users[username].password === password) {
-      setUser(username);
-      localStorage.setItem('currentUser', username);
-      return { success: true };
-    }
-    return { success: false, error: 'Invalid credentials' };
-  };
-
-  const register = (username, password) => {
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    if (users[username]) {
-      return { success: false, error: 'User already exists' };
-    }
-    users[username] = { password, createdAt: Date.now() };
-    localStorage.setItem('users', JSON.stringify(users));
-    setUser(username);
-    localStorage.setItem('currentUser', username);
-    // Give starting packs
-    const collection = [];
-    localStorage.setItem(`collection_${username}`, JSON.stringify(collection));
-    localStorage.setItem(`currency_${username}`, JSON.stringify(1000));
-    localStorage.setItem(`packs_${username}`, JSON.stringify({ basic: 3, premium: 0, mega: 0, legendary: 0 }));
-    return { success: true };
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
-  };
-
-  return { user, login, register, logout };
+function getUserKey(user) {
+  // Accept either string username or user object with username
+  return typeof user === 'string' ? user : user?.username;
 }
 
 export function useGame(user) {
@@ -51,24 +11,32 @@ export function useGame(user) {
   const [packs, setPacks] = useState({ basic: 0, premium: 0, mega: 0, legendary: 0 });
   const [prestigeCrystals, setPrestigeCrystals] = useState(0);
   const [xp, setXp] = useState(0);
-  const [unlockedFeatures, setUnlockedFeatures] = useState(['game']); // deck-battle, leaderboard added via rewards
-  const [claimedLevels, setClaimedLevels] = useState([]); // list of level numbers already claimed
+  const [unlockedFeatures, setUnlockedFeatures] = useState(['game']);
+  const [claimedLevels, setClaimedLevels] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      const savedCurrency = JSON.parse(localStorage.getItem(`currency_${user}`) || '1000');
-      const savedPacks = JSON.parse(localStorage.getItem(`packs_${user}`) || '{"basic":3,"premium":0,"mega":0,"legendary":0}');
-      const savedCrystals = JSON.parse(localStorage.getItem(`prestige_${user}`) || '0');
-      const savedXp = JSON.parse(localStorage.getItem(`xp_${user}`) || '0');
-      const savedUnlocks = JSON.parse(localStorage.getItem(`unlocks_${user}`) || '["game"]');
-      const savedClaimed = JSON.parse(localStorage.getItem(`claimedLevels_${user}`) || '[]');
-      setCurrency(savedCurrency);
-      setPacks(savedPacks);
-      setPrestigeCrystals(savedCrystals);
-      setXp(savedXp);
-      setUnlockedFeatures(savedUnlocks);
-      setClaimedLevels(savedClaimed);
+    setLoading(true);
+    const key = getUserKey(user);
+    if (key) {
+      try {
+        const savedCurrency = JSON.parse(localStorage.getItem(`currency_${key}`) || '0');
+        const savedPacks = JSON.parse(localStorage.getItem(`packs_${key}`) || '{"basic":0,"premium":0,"mega":0,"legendary":0}');
+        const savedCrystals = JSON.parse(localStorage.getItem(`prestige_${key}`) || '0');
+        const savedXp = JSON.parse(localStorage.getItem(`xp_${key}`) || '0');
+        const savedUnlocks = JSON.parse(localStorage.getItem(`unlocks_${key}`) || '["game"]');
+        const savedClaimed = JSON.parse(localStorage.getItem(`claimedLevels_${key}`) || '[]');
+        setCurrency(savedCurrency);
+        setPacks(savedPacks);
+        setPrestigeCrystals(savedCrystals);
+        setXp(savedXp);
+        setUnlockedFeatures(savedUnlocks);
+        setClaimedLevels(savedClaimed);
+      } catch (e) {
+        console.error('Failed to load game state from localStorage:', e);
+      }
     } else {
+      // Reset when logged out
       setCurrency(0);
       setPacks({ basic: 0, premium: 0, mega: 0, legendary: 0 });
       setPrestigeCrystals(0);
@@ -76,29 +44,33 @@ export function useGame(user) {
       setUnlockedFeatures(['game']);
       setClaimedLevels([]);
     }
+    setLoading(false);
   }, [user]);
 
   const updateCurrency = (amount) => {
     const newCurrency = Math.max(0, currency + amount);
     setCurrency(newCurrency);
-    if (user) {
-      localStorage.setItem(`currency_${user}`, JSON.stringify(newCurrency));
+    const key = getUserKey(user);
+    if (key) {
+      localStorage.setItem(`currency_${key}`, JSON.stringify(newCurrency));
     }
   };
 
   const updatePacks = (type, amount) => {
     const newPacks = { ...packs, [type]: Math.max(0, (packs[type] || 0) + amount) };
     setPacks(newPacks);
-    if (user) {
-      localStorage.setItem(`packs_${user}`, JSON.stringify(newPacks));
+    const key = getUserKey(user);
+    if (key) {
+      localStorage.setItem(`packs_${key}`, JSON.stringify(newPacks));
     }
   };
 
   const updatePrestigeCrystals = (amount) => {
     const newVal = Math.max(0, prestigeCrystals + amount);
     setPrestigeCrystals(newVal);
-    if (user) {
-      localStorage.setItem(`prestige_${user}`, JSON.stringify(newVal));
+    const key = getUserKey(user);
+    if (key) {
+      localStorage.setItem(`prestige_${key}`, JSON.stringify(newVal));
     }
   };
 
@@ -109,7 +81,8 @@ export function useGame(user) {
     const newXp = xp + amount;
     const newLevel = levelFromXp(newXp);
     setXp(newXp);
-    if (user) localStorage.setItem(`xp_${user}`, JSON.stringify(newXp));
+    const key = getUserKey(user);
+    if (key) localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
     if (newLevel > prevLevel) {
       const newUnlocks = [...unlockedFeatures];
       for (let l = prevLevel + 1; l <= newLevel; l++) {
@@ -120,7 +93,7 @@ export function useGame(user) {
       }
       if (newUnlocks.length !== unlockedFeatures.length) {
         setUnlockedFeatures(newUnlocks);
-        if (user) localStorage.setItem(`unlocks_${user}`, JSON.stringify(newUnlocks));
+        if (key) localStorage.setItem(`unlocks_${key}`, JSON.stringify(newUnlocks));
       }
     }
   };
@@ -134,10 +107,11 @@ export function useGame(user) {
       newPacks[packType] = (newPacks[packType] || 0) + count;
     });
     setPacks(newPacks);
-    if (user) localStorage.setItem(`packs_${user}`, JSON.stringify(newPacks));
+    const key = getUserKey(user);
+    if (key) localStorage.setItem(`packs_${key}`, JSON.stringify(newPacks));
     const newClaimed = [...claimedLevels, rewardLevel];
     setClaimedLevels(newClaimed);
-    if (user) localStorage.setItem(`claimedLevels_${user}`, JSON.stringify(newClaimed));
+    if (key) localStorage.setItem(`claimedLevels_${key}`, JSON.stringify(newClaimed));
     return true;
   };
 
@@ -148,7 +122,7 @@ export function useGame(user) {
   return {
     currency, packs, updateCurrency, updatePacks,
     prestigeCrystals, updatePrestigeCrystals,
-    xp, level, unlockedFeatures, claimedLevels, unclaimedCount,
+    xp, level, unlockedFeatures, claimedLevels, unclaimedCount, loading,
     addXp, claimReward,
   };
 }

@@ -403,7 +403,8 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
 
   useEffect(() => {
     if (user) {
-      const saved = JSON.parse(localStorage.getItem(`collection_${user}`) || '[]');
+      const key = typeof user === 'string' ? user : user.username;
+      const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
       setCollection(saved);
       setPresets(loadPresets(user));
     }

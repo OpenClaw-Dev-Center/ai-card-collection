@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 
-export function LoginRegister() {
+export function LoginRegister({ onLogin, onRegister }) {
   const [isLogin, setIsLogin] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,14 +18,15 @@ export function LoginRegister() {
 
     try {
       if (isLogin) {
-        await api.login(email, password);
+        const result = await api.login(email, password);
+        onLogin(result.user);
       } else {
         if (!username) {
           throw new Error('Username required for registration');
         }
-        await api.register(username, email, password);
+        const result = await api.register(username, email, password);
+        onRegister(result.user);
       }
-      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {

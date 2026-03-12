@@ -441,7 +441,7 @@ export const MOVES = {
     icon: '⚡',
     stat: 'power',
     description: 'Attack with raw power. Deals damage based on Power.',
-    energyCost: 25,
+    energyCost: 40,
     damageFactor: 0.5, // damage = stat * 0.5
     defenseFactor: 1.0 // affected normally by defense
   },

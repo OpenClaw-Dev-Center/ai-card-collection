@@ -14,10 +14,10 @@ const DIFFICULTY_TIERS = [
 ];
 
 const MOVE_META = {
-  strike: { icon: Swords, color: 'from-red-600 to-orange-500',    label: 'Strike', hint: 'High dmg · 25⚡' },
-  block:  { icon: Shield, color: 'from-blue-600 to-cyan-500',     label: 'Block',  hint: 'Reduce dmg 70% · 15⚡' },
-  focus:  { icon: Eye,    color: 'from-violet-600 to-purple-500', label: 'Focus',  hint: 'Charge +20% Strike · 20⚡' },
-  blitz:  { icon: Wind,   color: 'from-yellow-500 to-amber-400',  label: 'Blitz',  hint: 'Penetrates defense · 35⚡' },
+  strike: { icon: Swords, color: 'from-red-600 to-orange-500',    label: 'Strike', hint: 'High dmg · 40⚡' },
+  block:  { icon: Shield, color: 'from-blue-600 to-cyan-500',     label: 'Block',  hint: 'Dmg -70% + counters Strike · 15⚡' },
+  focus:  { icon: Eye,    color: 'from-violet-600 to-purple-500', label: 'Focus',  hint: '+2 stacks (+20% each) · 20⚡' },
+  blitz:  { icon: Wind,   color: 'from-yellow-500 to-amber-400',  label: 'Blitz',  hint: 'Pierces Block completely · 35⚡' },
 };
 
 function buildOpponent(playerCard, difficulty) {
@@ -274,9 +274,37 @@ export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => 
       else if (mult <= 0.76) msgs.push('❌ Not Very Effective…');
     }
 
-    // Block: receive 30% of damage
-    if (pMove === 'block') { oDmg = Math.floor(oDmg * 0.3); msgs.push('🛡️ You braced!'); }
-    if (oMove === 'block') { pDmg = Math.floor(pDmg * 0.3); msgs.push(`🛡️ ${oCard.name} blocked!`); }
+    // Block mechanics: reduces incoming by 70%, counters Strike with 40% reflect, but Blitz ignores Block entirely
+    if (pMove === 'block') {
+      if (oMove === 'blitz') {
+        msgs.push('🌀 Blitz tears through your Block! Full damage!');
+      } else {
+        const rawODmg = oDmg;
+        oDmg = Math.floor(oDmg * 0.3);
+        if (oMove === 'strike' && rawODmg > 0) {
+          const counter = Math.floor(rawODmg * 0.40);
+          oHp = Math.max(0, oHp - counter);
+          msgs.push(`🛡️ Block! You take ${oDmg} and counter for ${counter}!`);
+        } else {
+          msgs.push('🛡️ You braced!');
+        }
+      }
+    }
+    if (oMove === 'block') {
+      if (pMove === 'blitz') {
+        msgs.push(`🌀 Your Blitz pierces ${oCard.name}'s Block!`);
+      } else {
+        const rawPDmg = pDmg;
+        pDmg = Math.floor(pDmg * 0.3);
+        if (pMove === 'strike' && rawPDmg > 0) {
+          const counter = Math.floor(rawPDmg * 0.40);
+          pHp = Math.max(0, pHp - counter);
+          msgs.push(`🛡️ ${oCard.name} counters your Strike for ${counter} back at you!`);
+        } else {
+          msgs.push(`🛡️ ${oCard.name} blocked!`);
+        }
+      }
+    }
 
     // DeepSeek prediction
     if (pCard.provider === 'DEEPSEEK' && Math.random() < 0.25 && (oMove === 'strike' || oMove === 'blitz')) {
@@ -299,9 +327,9 @@ export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => 
     if (oMove === 'strike' && oBuf.analyticalBonus) { oDmg = Math.floor(oDmg * (1 + oBuf.analyticalBonus)); delete oBuf.analyticalBonus; }
 
     // Focus stack management
-    if (pMove === 'focus') { pFocus = Math.min(4, pFocus + 1); msgs.push(`🔮 Focus ×${pFocus} charged!`); }
+    if (pMove === 'focus') { pFocus = Math.min(4, pFocus + 2); msgs.push(`🔮 Focus ×${pFocus} charged! (+${pFocus * 20}% next Strike)`); }
     else if (pMove === 'strike') pFocus = 0;
-    if (oMove === 'focus') oFocus = Math.min(4, oFocus + 1);
+    if (oMove === 'focus') oFocus = Math.min(4, oFocus + 2);
     else if (oMove === 'strike') oFocus = 0;
 
     // Mistral cooldowns (non-block moves go on 1-turn lockout)

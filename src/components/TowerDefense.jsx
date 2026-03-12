@@ -59,7 +59,8 @@ function towerRange(card) {
 }
 
 // ─── Grid Cell ────────────────────────────────────────────────────────────────
-function GridCell({ col, lane, card, enemy, isDropTarget, onClick, rarity }) {
+function GridCell({ col, lane, tower, isDropTarget, onClick }) {
+  const card = tower?.card;
   const isTowerZone = TOWER_COLS.includes(col);
   const color = card ? (PROVIDERS[card.provider]?.color || '#6b7280') : '#1f2937';
   return (
@@ -86,6 +87,13 @@ function GridCell({ col, lane, card, enemy, isDropTarget, onClick, rarity }) {
           <div className="text-[8px] font-bold" style={{ color: RARITIES[card.rarity]?.color }}>
             {card.rarity.slice(0,3)}
           </div>
+          <div className="w-12 h-1 bg-gray-700 rounded-full overflow-hidden mt-0.5 mx-auto">
+            <div className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${Math.max(0, (tower.hp / tower.maxHp) * 100)}%`,
+                background: tower.hp / tower.maxHp > 0.5 ? '#22c55e' : tower.hp / tower.maxHp > 0.25 ? '#f59e0b' : '#ef4444',
+              }} />
+          </div>
         </div>
       )}
     </motion.div>
@@ -101,7 +109,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
   const [enemies, setEnemies] = useState([]);
   const [wave, setWave]       = useState(0);
   const [lives, setLives]     = useState(LIVES_START);
-  const [credits, setCredits] = useState(300);
+  const [credits, setCredits] = useState(400);
   const [kills, setKills]     = useState(0);
   const [log, setLog]         = useState([]);
   const [waveEnemiesLeft, setWaveEnemiesLeft] = useState(0);
@@ -139,11 +147,11 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
   // Build wave spawn queue
   function buildSpawnQueue(waveNum) {
     const isBoss = waveNum === 5 || waveNum === MAX_WAVES;
-    const count = isBoss ? 3 : 5 + waveNum * 2;
+    const count = isBoss ? 2 : 3 + waveNum;
     const queue = [];
     for (let i = 0; i < count; i++) {
       const lane = Math.floor(Math.random() * LANES);
-      const delay = i * 1200;
+      const delay = i * 800;
       queue.push({ lane, delay, sent: false });
     }
     return queue;
@@ -286,16 +294,17 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
     if (towers[key]) return;
     const cost = (RARITY_ORDER[selectedCard.rarity] || 1) * 50;
     if (credits < cost) { addLog(`❌ Need ${cost} credits to place this card`); return; }
-    setTowers(prev => ({ ...prev, [key]: selectedCard }));
+    const hp = calculateHP(selectedCard);
+    setTowers(prev => ({ ...prev, [key]: { card: selectedCard, hp, maxHp: hp } }));
     setCredits(c => c - cost);
-    addLog(`🏰 Placed ${selectedCard.name} in lane ${lane + 1}, col ${col + 1} (cost: ${cost})`);
+    addLog(`🏰 Placed ${selectedCard.name} in lane ${lane + 1} (HP: ${hp}, cost: ${cost})`);
     setSelectedCard(null);
   }
 
   function removeTower(lane, col) {
     const key = `${lane}-${col}`;
     if (!towers[key]) return;
-    const refund = Math.floor((RARITY_ORDER[towers[key].rarity] || 1) * 25);
+    const refund = Math.floor((RARITY_ORDER[towers[key].card.rarity] || 1) * 25);
     setTowers(prev => { const n = { ...prev }; delete n[key]; return n; });
     setCredits(c => c + refund);
   }
@@ -359,18 +368,18 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
               <div style={{ width: 40 }} className="text-xs text-gray-500 text-right pr-2">L{lane+1}</div>
               {Array.from({ length: COLS }).map((_, col) => {
                 const key = `${lane}-${col}`;
-                const card = towers[key];
+                const towerObj = towers[key];
                 const isTZ = TOWER_COLS.includes(col);
                 // Find enemies in this cell
                 const cellEnemies = enemies.filter(e => e.lane === lane && e.col === col);
                 return (
                   <div key={col} className="relative" style={{ width: CELL_W, height: CELL_H, margin: '0 1px' }}>
                     <GridCell
-                      col={col} lane={lane} card={card}
-                      isDropTarget={isTZ && !!selectedCard && !card}
+                      col={col} lane={lane} tower={towerObj}
+                      isDropTarget={isTZ && !!selectedCard && !towerObj}
                       onClick={() => {
                         if (isTZ) {
-                          if (card) removeTower(lane, col);
+                          if (towerObj) removeTower(lane, col);
                           else placeTower(lane, col);
                         }
                       }}
@@ -511,7 +520,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                 <motion.button
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    setPhase('setup'); setWave(0); setLives(LIVES_START); setCredits(300);
+                    setPhase('setup'); setWave(0); setLives(LIVES_START); setCredits(400);
                     setKills(0); setTowers({}); setEnemies([]); setLog([]); setSpawnQueue([]); setWaveEnemiesLeft(0);
                   }}
                   className="flex-1 py-3 rounded-xl border border-gray-600 text-gray-300 hover:bg-gray-800 text-sm font-medium"

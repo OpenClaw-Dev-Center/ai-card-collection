@@ -6,7 +6,7 @@ import {
   Save, FolderOpen, Filter, SortAsc, Trash2
 } from 'lucide-react';
 import { api } from '../services/api';
-import { PROVIDERS, calculateHP } from '../data/cards';
+import { PROVIDERS, calculateHP, getTypeMultiplier, getTypeMatchupText } from '../data/cards';
 
 // ─────────────────────────────────────────────
 //  SYNERGY DEFINITIONS
@@ -592,6 +592,7 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
       case 'surge': {
         let dmg = getActiveStat(pActive, 'power') * action.factor;
         if (playerSwitchBonus) { dmg *= 1.1; setPlayerSwitchBonus(false); }
+        dmg *= getTypeMultiplier(pActive.provider, eActive.provider);
         const rivalSyn = activeSynergyIds.includes('RIVALS');
         if (rivalSyn && eActive.provider === 'CLAUDE') dmg *= 1.30;
         if (newEnemyBarrier) {
@@ -621,6 +622,7 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
         const second = alive[1] || pActive;
         let dmg = (getActiveStat(pActive, 'creativity') + getActiveStat(second, 'creativity')) * action.factor;
         if (playerSwitchBonus) { dmg *= 1.1; setPlayerSwitchBonus(false); }
+        dmg *= getTypeMultiplier(pActive.provider, eActive.provider);
         if (newEnemyBarrier) {
           dmg *= 0.2;
           newEnemyBarrier = false;
@@ -643,6 +645,7 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
         setPlayerDeck(newPlayerDeck);
         let dmg = getActiveStat(pActive, 'intelligence') * action.factor;
         if (playerSwitchBonus) { dmg *= 1.1; setPlayerSwitchBonus(false); }
+        dmg *= getTypeMultiplier(pActive.provider, eActive.provider);
         if (newEnemyBarrier) {
           dmg *= 0.2;
           newEnemyBarrier = false;
@@ -675,7 +678,11 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
         setPlayerDeck(rotated);
         setPlayerSwitchBonus(true);
         spawnParticles('player', '#22c55e');
-        addLog(`🔄 Switched to ${getActivePlayer(rotated)?.name}! Next action +10% damage.`);
+        const switchedTo = getActivePlayer(rotated);
+        const switchMt = switchedTo && eActive ? getTypeMatchupText(switchedTo.provider, eActive.provider) : null;
+        const switchMult = switchedTo && eActive ? getTypeMultiplier(switchedTo.provider, eActive.provider) : 1;
+        const switchSuffix = switchMt ? ` ${switchMt.emoji} ${switchMt.label} vs ${eActive.name} (${Math.round(switchMult * 100)}% dmg)` : '';
+        addLog(`🔄 Switched to ${switchedTo?.name}!${switchSuffix} · Next action +10%.`);
         break;
       }
     }
@@ -703,6 +710,7 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
       case 'surge': {
         let dmg = getActiveStat(eActiveNow, 'power') * eAction.factor;
         if (enemySwitchBonus) { dmg *= 1.1; setEnemySwitchBonus(false); }
+        dmg *= getTypeMultiplier(eActiveNow.provider, pActiveNow.provider);
         if (newPlayerBarrier) {
           dmg *= 0.2;
           newPlayerBarrier = false;
@@ -728,6 +736,7 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
         const eSecond = eAlive[1] || eActiveNow;
         let dmg = (getActiveStat(eActiveNow, 'creativity') + getActiveStat(eSecond, 'creativity')) * eAction.factor;
         if (enemySwitchBonus) { dmg *= 1.1; setEnemySwitchBonus(false); }
+        dmg *= getTypeMultiplier(eActiveNow.provider, pActiveNow.provider);
         if (newPlayerBarrier) {
           dmg *= 0.2;
           newPlayerBarrier = false;
@@ -748,6 +757,7 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
         setEnemyDeck(newEnemyDeck);
         let dmg = getActiveStat(eActiveNow, 'intelligence') * eAction.factor;
         if (enemySwitchBonus) { dmg *= 1.1; setEnemySwitchBonus(false); }
+        dmg *= getTypeMultiplier(eActiveNow.provider, pActiveNow.provider);
         if (newPlayerBarrier) {
           dmg *= 0.2;
           newPlayerBarrier = false;
@@ -1292,11 +1302,29 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
             </div>
           </div>
 
-          <motion.div
-            animate={{ scale: [1, 1.15, 1], rotate: [0, 5, -5, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="text-2xl"
-          >⚔️</motion.div>
+          <div className="flex flex-col items-center gap-1">
+            <motion.div
+              animate={{ scale: [1, 1.15, 1], rotate: [0, 5, -5, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="text-2xl"
+            >⚔️</motion.div>
+            {pActive && eActive && (() => {
+              const yMt = getTypeMatchupText(pActive.provider, eActive.provider);
+              const tMt = getTypeMatchupText(eActive.provider, pActive.provider);
+              const yMult = getTypeMultiplier(pActive.provider, eActive.provider);
+              const tMult = getTypeMultiplier(eActive.provider, pActive.provider);
+              return (
+                <div className="text-center space-y-0.5">
+                  <div className="text-[10px] font-bold whitespace-nowrap" style={{ color: yMt.color }}>
+                    {yMt.emoji} You {Math.round(yMult * 100)}%
+                  </div>
+                  <div className="text-[10px] font-bold whitespace-nowrap" style={{ color: tMt.color }}>
+                    {tMt.emoji} AI {Math.round(tMult * 100)}%
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
 
           <div className="text-center relative">
             {eActive && (

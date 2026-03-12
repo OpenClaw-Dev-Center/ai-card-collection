@@ -55,7 +55,7 @@ export function Dashboard({
     };
   }, [user]);
 
-  const key = user ? (typeof user === 'string' ? user : user.username) : null;
+  const key = user ? (typeof user === 'string' ? user : (user.id || user.username)) : null;
   const collection = key ? JSON.parse(localStorage.getItem(`collection_${key}`) || '[]') : [];
   const collectionCount = collection.length;
   const totalWins = userStats.wins;

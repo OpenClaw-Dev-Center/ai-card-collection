@@ -54,17 +54,16 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize WebSocket when user logs in
+  // Initialize WebSocket only when entering deck-battle
   useEffect(() => {
-    if (user && user.id) {
+    if (user && user.id && view === 'deck-battle') {
       battleSocket.connect(user.id);
       battleSocket.on('battle_found', (battleId, opponent) => {
         console.log('Battle found:', battleId, opponent);
-        // TODO: Navigate to battle view with battleId
       });
       return () => battleSocket.disconnect();
     }
-  }, [user]);
+  }, [user, view]);
 
   useEffect(() => {
     if (user) {
@@ -113,8 +112,20 @@ function App() {
 
   const handleLogout = async () => {
     battleSocket.leaveQueue();
+    battleSocket.disconnect();
     api.logout();
     setUser(null);
+  };
+
+  const handlePackOpen = (packType, packKey) => {
+    const ownedCount = packs[packKey] || 0;
+    if (ownedCount > 0) {
+      setOpeningPack({ ...packType, packKey, fromStock: true });
+      setView('pack-opening');
+    } else if (!packType.rewardOnly && currency >= packType.cost) {
+      setOpeningPack({ ...packType, packKey, fromStock: false });
+      setView('pack-opening');
+    }
   };
 
   const handlePackComplete = async (newCards, crystalsEarned = 0) => {

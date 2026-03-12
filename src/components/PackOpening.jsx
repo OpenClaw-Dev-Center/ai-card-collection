@@ -200,7 +200,7 @@ export function PackOpening({ pack, onComplete, user }) {
     setShowResult(true);
 
     // Check which pulled cards would be excess (player already has enough to fully max out)
-    const key = user ? (typeof user === 'string' ? user : user.username) : null;
+    const key = user ? (typeof user === 'string' ? user : (user.id || user.username)) : null;
     const collection = key ? JSON.parse(localStorage.getItem(`collection_${key}`) || '[]') : [];
     let crystals = 0;
     const converted = new Set();

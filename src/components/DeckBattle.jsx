@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Swords, Shield, Zap, Brain, Sparkles, Star,
@@ -404,7 +404,14 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
     if (user) {
       const key = typeof user === 'string' ? user : (user.id || user.username);
       const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
-      setCollection(saved);
+      // Deduplicate: one representative per baseId+rarity
+      const seen = new Set();
+      const deduped = saved.filter(c => {
+        const k = `${c.baseId}-${c.rarity}`;
+        if (seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+      setCollection(deduped);
       setPresets(loadPresets(user));
     }
   }, [user]);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Swords, Coins, Heart, Zap, Shield, Eye, Wind, Brain,
@@ -84,7 +84,14 @@ export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => 
     if (user) {
       const key = typeof user === 'string' ? user : (user.id || user.username);
       const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
-      setCollection(saved);
+      // Deduplicate: one representative per baseId+rarity
+      const seen = new Set();
+      const deduped = saved.filter(c => {
+        const k = `${c.baseId}-${c.rarity}`;
+        if (seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+      setCollection(deduped);
     }
   }, [user]);
 

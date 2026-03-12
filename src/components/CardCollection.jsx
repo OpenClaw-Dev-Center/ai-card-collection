@@ -19,7 +19,18 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
     }
   }, [user]);
 
-  const filteredCards = collection
+  // Deduplicate: one representative per baseId+rarity (duplicates just counted in badge)
+  const dedupedCollection = React.useMemo(() => {
+    const seen = new Set();
+    return collection.filter(card => {
+      const k = `${card.baseId}-${card.rarity}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [collection]);
+
+  const filteredCards = dedupedCollection
     .filter(card => {
       if (search && !card.name.toLowerCase().includes(search.toLowerCase()) &&
           !card.provider.toLowerCase().includes(search.toLowerCase())) {
@@ -192,6 +203,8 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
                     .map(card => {
                       const required = getDuplicatesRequired(card);
                       const dupeCount = getDuplicateCount(card, collection);
+                      const totalCopies = dupeCount + 1;
+                      const totalNeeded = required !== null ? required + 1 : null;
                       const canUpgrade = required !== null && dupeCount >= required;
                       const isMaxLevel = required === null;
                       return (
@@ -217,7 +230,7 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
                                 }`}
                               >
                                 <Copy className="w-3 h-3" />
-                                {dupeCount}/{required}
+                                {totalCopies}/{totalNeeded}
                               </div>
                             )}
                             {isMaxLevel && (
@@ -258,6 +271,8 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
         {upgradingCard && (() => {
           const required = getDuplicatesRequired(upgradingCard);
           const dupeCount = getDuplicateCount(upgradingCard, collection);
+          const totalCopies = dupeCount + 1;
+          const totalNeeded = required !== null ? required + 1 : null;
           const canUpgrade = required !== null && dupeCount >= required;
           const nextVersion = VERSION_PROGRESSION[upgradingCard.version]?.next;
           return (
@@ -315,7 +330,7 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
                   </div>
                   <div className="text-center mt-2 text-sm">
                     <span className={dupeCount >= required ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
-                      {dupeCount}/{required} copies
+                    {totalCopies}/{totalNeeded} copies
                     </span>
                     {dupeCount < required && (
                       <span className="text-gray-500 ml-2">(need {required - dupeCount} more)</span>
@@ -324,7 +339,7 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
                 </div>
 
                 <p className="text-xs text-gray-500 text-center mb-4">
-                  {required} duplicate{required > 1 ? 's' : ''} of <span style={{ color: upgradingCard.rarityInfo.color }}>{upgradingCard.rarityInfo.name} {upgradingCard.name}</span> will be consumed.
+                  Requires {totalNeeded} total copies of <span style={{ color: upgradingCard.rarityInfo.color }}>{upgradingCard.rarityInfo.name} {upgradingCard.name}</span> ({required} will be consumed).
                 </p>
 
                 <div className="flex gap-3">

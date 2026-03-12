@@ -101,7 +101,8 @@ router.put('/:userId', authenticate, async (req, res) => {
       values.push(JSON.stringify(deckPresets));
     }
     if (stats !== undefined) {
-      updates.push(`stats = $${paramCount++}::jsonb`);
+      // Merge into existing stats so partial updates don't wipe other fields
+      updates.push(`stats = stats || $${paramCount++}::jsonb`);
       values.push(JSON.stringify(stats));
     }
 

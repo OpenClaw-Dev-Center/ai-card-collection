@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { levelFromXp, xpToNextLevel, xpForLevel, LEVEL_REWARDS } from '../data/cards';
+import { api } from '../services/api';
 
 function getUserKey(user) {
   // Accept either string username or user object with username
@@ -82,7 +83,13 @@ export function useGame(user) {
     const newLevel = levelFromXp(newXp);
     setXp(newXp);
     const key = getUserKey(user);
-    if (key) localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
+    if (key) {
+      localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
+      // Persist XP to backend (fire-and-forget)
+      if (user?.id) {
+        api.updateProfile(user.id, { stats: { xp: newXp } }).catch(() => {});
+      }
+    }
     if (newLevel > prevLevel) {
       const newUnlocks = [...unlockedFeatures];
       for (let l = prevLevel + 1; l <= newLevel; l++) {
@@ -131,6 +138,16 @@ export function useGame(user) {
     localStorage.setItem(`packs_${key}`, JSON.stringify(newPacks));
     localStorage.setItem(`prestige_${key}`, JSON.stringify(newCrystals));
     localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
+    // Restore wins/playtime into the 'users' key that Dashboard reads
+    if (profile.stats) {
+      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      users[key] = {
+        ...(users[key] || {}),
+        wins: profile.stats.wins ?? (users[key]?.wins || 0),
+        playtimeHours: profile.stats.playtimeHours ?? (users[key]?.playtimeHours || 0),
+      };
+      localStorage.setItem('users', JSON.stringify(users));
+    }
   };
 
   const unclaimedCount = Object.keys(LEVEL_REWARDS).filter(

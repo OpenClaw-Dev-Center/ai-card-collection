@@ -228,6 +228,9 @@ function App() {
             currency={currency}
             onComplete={(reward) => {
               updateCurrency(reward);
+              if (user && user.id && isOnline) {
+                api.recordBattleResult(user.id, 'win', 0, null);
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -240,6 +243,9 @@ function App() {
             user={user}
             onComplete={(reward) => {
               updateCurrency(reward);
+              if (user && user.id && isOnline) {
+                api.recordBattleResult(user.id, 'win', 0, null);
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}

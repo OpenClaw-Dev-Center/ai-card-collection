@@ -6,7 +6,7 @@ import {
   Save, FolderOpen, Filter, SortAsc, Trash2
 } from 'lucide-react';
 import { api } from '../services/api';
-import { PROVIDERS, calculateHP, getTypeMultiplier, getTypeMatchupText } from '../data/cards';
+import { PROVIDERS, calculateHP, getTypeMultiplier, getTypeMatchupText, TYPE_CHART } from '../data/cards';
 
 // ─────────────────────────────────────────────
 //  SYNERGY DEFINITIONS
@@ -1046,6 +1046,56 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
               </div>
             </div>
 
+            {/* Type Advantage Panel */}
+            {playerDeckSelection.length > 0 && (() => {
+              const deckProviders = [...new Set(playerDeckSelection.map(c => c.provider))];
+              const allProviders = Object.keys(PROVIDERS);
+              return (
+                <div className="bg-gray-900/60 rounded-2xl p-4 border border-gray-700">
+                  <h3 className="font-bold mb-3 text-gray-200 flex items-center gap-2 text-sm">
+                    🔮 Type Matchups
+                  </h3>
+                  <div className="text-[10px] text-gray-500 mb-2">Your deck vs potential opponents</div>
+                  <div className="overflow-x-auto">
+                    <table className="text-[9px] border-collapse w-full">
+                      <thead>
+                        <tr>
+                          <th className="p-0.5 text-gray-600 text-left">ATK▶</th>
+                          {allProviders.map(def => (
+                            <th key={def} className="p-0.5 text-center" style={{ color: PROVIDERS[def].color }}>
+                              {PROVIDERS[def].icon ?? def.slice(0,3)}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deckProviders.map(atk => (
+                          <tr key={atk}>
+                            <td className="p-0.5 font-bold" style={{ color: PROVIDERS[atk].color }}>{PROVIDERS[atk].icon ?? atk.slice(0,3)}</td>
+                            {allProviders.map(def => {
+                              const mult = getTypeMultiplier(atk, def);
+                              const bg = mult >= 1.25 ? '#22c55e30' : mult >= 1.1 ? '#86efac18' : mult <= 0.76 ? '#ef444430' : mult <= 0.9 ? '#fca5a518' : 'transparent';
+                              const clr = mult >= 1.25 ? '#4ade80' : mult >= 1.1 ? '#86efac' : mult <= 0.76 ? '#f87171' : mult <= 0.9 ? '#fca5a5' : '#4b5563';
+                              return (
+                                <td key={def} className="p-0.5 text-center rounded" style={{ background: bg, color: clr }}>
+                                  {atk === def ? '―' : mult.toFixed(2)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-2 flex gap-3 text-[9px]">
+                    <span className="text-green-400">■ ≥1.25× Super</span>
+                    <span className="text-red-400">■ ≤0.76× Weak</span>
+                    <span className="text-gray-500">■ Normal</span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Deck Presets */}
             <div className="bg-gray-900/60 rounded-2xl p-4 border border-gray-700">
               <div className="flex items-center justify-between mb-3">
@@ -1314,13 +1364,34 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
               const yMult = getTypeMultiplier(pActive.provider, eActive.provider);
               const tMult = getTypeMultiplier(eActive.provider, pActive.provider);
               return (
-                <div className="text-center space-y-0.5">
-                  <div className="text-[10px] font-bold whitespace-nowrap" style={{ color: yMt.color }}>
+                <div className="text-center space-y-1">
+                  <motion.div
+                    key={`${pActive.provider}-${eActive.provider}-y`}
+                    initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                    className="text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full"
+                    style={{
+                      color: yMt.color,
+                      background: `${yMt.color}20`,
+                      border: `1px solid ${yMt.color}40`,
+                    }}
+                  >
                     {yMt.emoji} You {Math.round(yMult * 100)}%
+                  </motion.div>
+                  <div className="text-[9px] text-gray-600 text-center leading-none">
+                    {pActive.provider} → {eActive.provider}
                   </div>
-                  <div className="text-[10px] font-bold whitespace-nowrap" style={{ color: tMt.color }}>
+                  <motion.div
+                    key={`${pActive.provider}-${eActive.provider}-t`}
+                    initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                    className="text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full"
+                    style={{
+                      color: tMt.color,
+                      background: `${tMt.color}20`,
+                      border: `1px solid ${tMt.color}40`,
+                    }}
+                  >
                     {tMt.emoji} AI {Math.round(tMult * 100)}%
-                  </div>
+                  </motion.div>
                 </div>
               );
             })()}

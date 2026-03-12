@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Castle, Shield, Zap, SkipForward, Play, Pause } from 'lucide-react';
-import { CARD_POOL, RARITIES, calculateHP, PROVIDERS, getTypeMultiplier } from '../data/cards';
+import { CARD_POOL, RARITIES, calculateHP, PROVIDERS, getTypeMultiplier, TYPE_CHART } from '../data/cards';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const LANES = 4;
@@ -33,51 +33,87 @@ const BOSS_TYPES = [
 ];
 
 // ─── Lane Synergies ──────────────────────────────────────────────────────────
-// Ordered highest→lowest so the first match wins (strongest synergy takes priority)
+// Strategic cross-provider synergies — each has a unique MECHANIC, not just % buffs.
+// Ordered highest priority first (most specific / best reward wins).
 const LANE_SYNERGIES = [
   {
-    id: 'hivemind',
-    name: 'Neural Hivemind',
-    emoji: '🧠',
-    condition: (ps) => { const c = {}; ps.forEach(p => c[p] = (c[p] || 0) + 1); return Object.values(c).some(v => v >= 4); },
-    dmgMult: 2.5, rangeMult: 1.3,
-    color: '#ef4444',
-    desc: '4× same provider → ×2.5 DPS, +30% range',
+    id: 'surge_drain',
+    name: 'Surge Drain',
+    emoji: '💸',
+    condition: (ps) => ps.includes('CLAUDE') && ps.includes('GPT') && ps.includes('GEMINI'),
+    effect: 'double_credits',
+    dmgMult: 1.0, rangeMult: 1.0,
+    color: '#22c55e',
+    desc: 'Claude + GPT + Gemini → All kills in this lane award 2× credits',
   },
   {
-    id: 'ensemble',
-    name: 'Model Ensemble',
-    emoji: '🔥',
-    condition: (ps) => { const c = {}; ps.forEach(p => c[p] = (c[p] || 0) + 1); return Object.values(c).some(v => v >= 3); },
-    dmgMult: 1.9, rangeMult: 1.15,
-    color: '#f59e0b',
-    desc: '3× same provider → ×1.9 DPS, +15% range',
-  },
-  {
-    id: 'open_stack',
-    name: 'Open Source Stack',
+    id: 'open_rebellion',
+    name: 'Open Rebellion',
     emoji: '🦙',
-    condition: (ps) => (ps.includes('LLAMA') || ps.includes('MISTRAL')) && ps.includes('DEEPSEEK'),
-    dmgMult: 1.65, rangeMult: 1.0,
+    condition: (ps) => ['LLAMA', 'MISTRAL', 'DEEPSEEK'].every(p => ps.includes(p)),
+    effect: 'splash',
+    dmgMult: 1.0, rangeMult: 1.0,
     color: '#8b5cf6',
-    desc: 'DeepSeek + Llama/Mistral → ×1.65 DPS',
+    desc: 'Llama + Mistral + DeepSeek → 30% of damage splashes to the next enemy in lane',
   },
   {
-    id: 'east_west',
-    name: 'East-West Fusion',
-    emoji: '🌐',
-    condition: (ps) => ps.includes('DEEPSEEK') && ps.includes('GPT'),
-    dmgMult: 1.55, rangeMult: 1.0,
+    id: 'chain_lightning',
+    name: 'Chain Lightning',
+    emoji: '⚡',
+    condition: (ps) => ps.includes('CLAUDE') && ps.includes('MISTRAL'),
+    effect: 'chain',
+    dmgMult: 0.7, rangeMult: 1.0,
+    color: '#f59e0b',
+    desc: 'Claude + Mistral → Each tower strikes ALL enemies in range simultaneously (70% dmg each)',
+  },
+  {
+    id: 'type_shredder',
+    name: 'Type Shredder',
+    emoji: '🔮',
+    condition: (ps) => ps.includes('GPT') && ps.includes('DEEPSEEK'),
+    effect: 'no_resistance',
+    dmgMult: 1.0, rangeMult: 1.0,
+    color: '#10b981',
+    desc: 'GPT + DeepSeek → Enemies cannot resist (type multiplier floors at 1.0)',
+  },
+  {
+    id: 'ghost_protocol',
+    name: 'Ghost Protocol',
+    emoji: '👻',
+    condition: (ps) => ps.includes('MISTRAL') && ps.includes('DEEPSEEK'),
+    effect: 'invulnerable',
+    dmgMult: 1.1, rangeMult: 1.0,
     color: '#6366f1',
-    desc: 'DeepSeek + GPT → ×1.55 DPS',
+    desc: 'Mistral + DeepSeek → Towers are completely immune to enemy melee damage',
+  },
+  {
+    id: 'overclocked',
+    name: 'Overclocked',
+    emoji: '🚀',
+    condition: (ps) => ps.includes('GEMINI') && ps.includes('LLAMA'),
+    effect: 'double_fire',
+    dmgMult: 1.0, rangeMult: 1.0,
+    color: '#ec4899',
+    desc: 'Gemini + Llama → Every tower fires twice per tick (double DPS)',
+  },
+  {
+    id: 'full_coverage',
+    name: 'Full Coverage',
+    emoji: '🏰',
+    condition: (ps) => new Set(ps).size >= 4,
+    effect: 'melee_shield',
+    dmgMult: 1.1, rangeMult: 1.0,
+    color: '#9ca3af',
+    desc: '4 different providers in a lane → Enemies deal 50% less melee damage to towers',
   },
   {
     id: 'frontier',
     name: 'Frontier Alliance',
     emoji: '🤝',
     condition: (ps) => ps.includes('CLAUDE') && ps.includes('GPT'),
+    effect: 'buff',
     dmgMult: 1.5, rangeMult: 1.2,
-    color: '#10b981',
+    color: '#d97706',
     desc: 'Claude + GPT → ×1.5 DPS, +20% range',
   },
   {
@@ -85,19 +121,19 @@ const LANE_SYNERGIES = [
     name: 'Multimodal Surge',
     emoji: '✨',
     condition: (ps) => ps.includes('GEMINI') && (ps.includes('CLAUDE') || ps.includes('MISTRAL')),
-    dmgMult: 1.45, rangeMult: 1.1,
+    effect: 'buff',
+    dmgMult: 1.4, rangeMult: 1.1,
     color: '#3b82f6',
-    desc: 'Gemini + Claude/Mistral → ×1.45 DPS, +10% range',
+    desc: 'Gemini + Claude/Mistral → ×1.4 DPS, +10% range',
   },
-  {
-    id: 'parallel',
-    name: 'Parallel Inference',
-    emoji: '⚡',
-    condition: (ps) => { const c = {}; ps.forEach(p => c[p] = (c[p] || 0) + 1); return Object.values(c).some(v => v >= 2); },
-    dmgMult: 1.4, rangeMult: 1.0,
-    color: '#a78bfa',
-    desc: '2× same provider → ×1.4 DPS',
-  },
+];
+
+// ─── Game Modes ──────────────────────────────────────────────────────────────
+const GAME_MODES = [
+  { id: 'rookie',   label: 'Rookie',     emoji: '🐣', waves: 10,   enemyMult: 0.6,  spawnAdd: -1, creditBonus: 1.0, xpMult: 1.0, color: '#22c55e', desc: 'Weaker enemies — ideal for learning synergies' },
+  { id: 'veteran',  label: 'Veteran',    emoji: '⚔️',  waves: 10,   enemyMult: 1.0,  spawnAdd: 0,  creditBonus: 1.5, xpMult: 1.5, color: '#3b82f6', desc: 'Balanced — +50% credits & XP on completion' },
+  { id: 'champion', label: 'Champion',   emoji: '🔥', waves: 10,   enemyMult: 1.5,  spawnAdd: 2,  creditBonus: 2.5, xpMult: 2.5, color: '#f59e0b', desc: 'Harder enemies, more spawns — massive rewards' },
+  { id: 'infinite', label: '∞ Infinite', emoji: '♾️', waves: 9999, enemyMult: 1.0,  spawnAdd: 0,  creditBonus: 2.0, xpMult: 3.0, color: '#ef4444', desc: 'Endless waves that grow exponentially — how far can you get?' },
 ];
 
 function getLaneSynergy(lane, towers) {
@@ -112,19 +148,25 @@ function getLaneSynergy(lane, towers) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let eidCounter = 0;
-function makeEnemy(wave, lane) {
-  const isBossWave = wave === 5 || wave === MAX_WAVES;
+function makeEnemy(wave, lane, isBossWave, enemyMult) {
   const types = isBossWave ? BOSS_TYPES : ENEMY_TYPES;
   const t = types[Math.floor(Math.random() * types.length)];
-  const hpMult = 1 + (wave - 1) * 0.30 + (isBossWave ? 0.6 : 0);
+  // Steepening HP curve: 40%/wave for waves 1-5, then 65%/wave after
+  const waveBonus = wave <= 5
+    ? (wave - 1) * 0.40
+    : (4 * 0.40) + (wave - 5) * 0.65;
+  const hpMult = (1 + waveBonus + (isBossWave ? 0.8 : 0)) * (enemyMult ?? 1.0);
+  // Enemies gain speed in very late waves
+  const extraSpeed = wave >= 20 ? 1 : 0;
   return {
     id: ++eidCounter,
     ...t,
+    speed: Math.min(3, t.speed + extraSpeed),
     maxHp: Math.floor(t.baseHp * hpMult),
     hp: Math.floor(t.baseHp * hpMult),
     lane,
     col: COLS - 1,
-    progress: 0,
+    isBoss: isBossWave,
   };
 }
 
@@ -183,7 +225,9 @@ function GridCell({ col, lane, tower, isDropTarget, onClick, synColor }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) {
-  const [phase, setPhase]     = useState('setup'); // setup | wave | paused | gameover | victory
+  const [phase, setPhase]     = useState('setup'); // setup | wave | gameover | victory
+  const [gameMode, setGameMode] = useState(null);  // null = show mode selector
+  const [showTypeChart, setShowTypeChart] = useState(false);
   const [collection, setCollection] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [towers, setTowers]   = useState({}); // key: `${lane}-${col}` → card
@@ -202,7 +246,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
 
   // Keep stateRef current
   useEffect(() => {
-    stateRef.current = { enemies, towers, lives, kills, credits, wave, spawnQueue, waveEnemiesLeft, paused };
+    stateRef.current = { enemies, towers, lives, kills, credits, wave, spawnQueue, waveEnemiesLeft, paused, gameMode };
   });
 
   // Load collection
@@ -227,25 +271,31 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
 
   // Build wave spawn queue
   function buildSpawnQueue(waveNum) {
-    const isBoss = waveNum === 5 || waveNum === MAX_WAVES;
-    const count = isBoss ? 2 : 3 + waveNum;
+    const gm = stateRef.current.gameMode;
+    const isBossWave = waveNum % 5 === 0;
+    const spawnAdd = gm?.spawnAdd ?? 0;
+    const count = isBossWave
+      ? Math.max(2, 2 + Math.floor(waveNum / 10))
+      : Math.max(3, 3 + waveNum + spawnAdd);
     const queue = [];
     for (let i = 0; i < count; i++) {
-      const lane = Math.floor(Math.random() * LANES);
-      const delay = i * 800;
-      queue.push({ lane, delay, sent: false });
+      queue.push({ lane: Math.floor(Math.random() * LANES), delay: i * 800, sent: false, isBossWave });
     }
     return queue;
   }
 
   function startWave() {
     const newWave = stateRef.current.wave + 1;
+    const gm = stateRef.current.gameMode;
     setWave(newWave);
     const queue = buildSpawnQueue(newWave);
     setSpawnQueue(queue);
     setWaveEnemiesLeft(queue.length);
     setPhase('wave');
-    addLog(`🌊 Wave ${newWave}/${MAX_WAVES} incoming!${newWave === 5 || newWave === MAX_WAVES ? ' ⚠️ BOSS WAVE!' : ''}`);
+    const isBossWave = newWave % 5 === 0;
+    const maxWaves = gm?.waves ?? MAX_WAVES;
+    const waveLabel = maxWaves >= 9999 ? `∞ Wave ${newWave}` : `Wave ${newWave}/${maxWaves}`;
+    addLog(`🌊 ${waveLabel} incoming!${isBossWave ? ' ⚠️ BOSS WAVE!' : ''}`);
   }
 
   // ── Game tick ──────────────────────────────────────────────────────────────
@@ -373,7 +423,8 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
           if (!updated[i].spawnAt) { updated[i] = { ...updated[i], spawnAt: now + updated[i].delay }; }
           if (now >= updated[i].spawnAt) {
             updated[i] = { ...updated[i], sent: true };
-            const newEnemy = makeEnemy(stateRef.current.wave, updated[i].lane);
+            const gm = stateRef.current.gameMode;
+            const newEnemy = makeEnemy(stateRef.current.wave, updated[i].lane, updated[i].isBossWave ?? false, gm?.enemyMult ?? 1.0);
             setEnemies(prev => [...prev, newEnemy]);
             anySpawned = true;
           }
@@ -419,9 +470,69 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
     setCredits(c => c + refund);
   }
 
-  const totalReward = wave >= MAX_WAVES
-    ? Math.floor(kills * 100 + 5000)
-    : Math.floor(kills * 100 + wave * 500);
+  const gm = gameMode;
+  const maxWaves = gm?.waves ?? MAX_WAVES;
+  const gmXpMult = gm?.xpMult ?? 1.0;
+  const gmCreditMult = gm?.creditBonus ?? 1.0;
+  const totalReward = Math.floor(
+    (wave >= maxWaves ? kills * 100 + 5000 : kills * 100 + wave * 500) * gmCreditMult
+  );
+  const totalXp = Math.floor(
+    (wave >= maxWaves ? 1000 : Math.max(50, wave * 75)) * gmXpMult
+  );
+
+  // ─── Mode selector screen ───────────────────────────────────────────────────────
+  if (!gameMode) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-2xl"
+        >
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-black mb-2 bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
+              🏰 Tower Defense
+            </h1>
+            <p className="text-gray-400">Select a difficulty to begin</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            {GAME_MODES.map(mode => (
+              <motion.button
+                key={mode.id}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setGameMode(mode)}
+                className="p-5 rounded-2xl border-2 text-left flex flex-col gap-2 transition-all"
+                style={{ borderColor: `${mode.color}60`, background: `${mode.color}12` }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl">{mode.emoji}</span>
+                  <span className="text-xl font-black" style={{ color: mode.color }}>{mode.label}</span>
+                </div>
+                <p className="text-xs text-gray-400 leading-relaxed">{mode.desc}</p>
+                <div className="flex flex-wrap gap-2 text-[11px] mt-1">
+                  {mode.waves >= 9999 ? (
+                    <span className="text-red-400">&#9837; Endless</span>
+                  ) : (
+                    <span className="text-gray-300">🌊 {mode.waves} waves</span>
+                  )}
+                  {mode.xpMult > 1 && <span className="text-purple-400">+{Math.round((mode.xpMult-1)*100)}% XP</span>}
+                  {mode.creditBonus > 1 && <span className="text-yellow-400">+{Math.round((mode.creditBonus-1)*100)}% Credits</span>}
+                  {mode.enemyMult !== 1 && <span style={{ color: mode.color }}>{mode.enemyMult < 1 ? `${Math.round(mode.enemyMult*100)}% enemy HP` : `${Math.round(mode.enemyMult*100)}% enemy HP`}</span>}
+                </div>
+              </motion.button>
+            ))}
+          </div>
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 mx-auto text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto">
@@ -441,6 +552,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
           🏰 Tower Defense
         </h1>
         <div className="flex items-center gap-3 text-sm">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${gm.color}20`, color: gm.color }}>{gm.emoji} {gm.label}</span>
           <span className="text-red-400">❤️ {lives}</span>
           <span className="text-yellow-400">💰 {credits}</span>
           <span className="text-blue-400">💀 {kills}</span>
@@ -449,9 +561,14 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
 
       {/* Wave progress */}
       <div className="flex items-center gap-2 mb-4 text-xs text-gray-400">
-        <span>Wave {wave}/{MAX_WAVES}</span>
+        <span className="shrink-0">
+          {maxWaves >= 9999 ? `∞ Wave ${wave}` : `Wave ${wave}/${maxWaves}`}
+        </span>
         <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-          <div className="h-full bg-amber-500 rounded-full transition-all duration-500" style={{ width: `${(wave / MAX_WAVES) * 100}%` }} />
+          <div
+            className="h-full bg-amber-500 rounded-full transition-all duration-500"
+            style={{ width: maxWaves >= 9999 ? `${Math.min(100, (wave / 30) * 100)}%` : `${(wave / maxWaves) * 100}%` }}
+          />
         </div>
         {phase === 'wave' && (
           <button onClick={() => setPaused(p => !p)} className="flex items-center gap-1 text-gray-300 hover:text-white">
@@ -542,22 +659,109 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
         </div>
       </div>
 
-      {/* Active synergies strip */}
-      <div className="mb-3 min-h-[28px] flex flex-wrap items-center gap-2">
-        <span className="text-[10px] text-gray-600 shrink-0">Synergies:</span>
-        {Array.from({ length: LANES }).map((_, lane) => {
-          const syn = getLaneSynergy(lane, towers);
-          if (!syn) return null;
-          return (
-            <span key={lane} className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-              style={{ background: `${syn.color}18`, color: syn.color, border: `1px solid ${syn.color}40` }}>
-              {syn.emoji} L{lane+1} {syn.name}
-            </span>
-          );
-        })}
-        {Array.from({ length: LANES }).every((_, l) => !getLaneSynergy(l, towers)) && (
-          <span className="text-[10px] text-gray-700">None active — place 2+ matching towers in a lane to trigger</span>
+      {/* ─ Synergy Panel + Type Chart ──────────────────────────────────────────── */}
+      <div className="mb-3 rounded-xl bg-gray-900/70 border border-gray-700/50 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-gray-300">⚡ Lane Synergies</span>
+          <button
+            onClick={() => setShowTypeChart(p => !p)}
+            className="text-[10px] text-gray-500 hover:text-blue-400 transition-colors flex items-center gap-1"
+          >
+            {showTypeChart ? '▼' : '▶'} Type Chart
+          </button>
+        </div>
+
+        {/* Active synergies grid */}
+        {Array.from({ length: LANES }).some((_, l) => getLaneSynergy(l, towers)) ? (
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            {Array.from({ length: LANES }).map((_, lane) => {
+              const syn = getLaneSynergy(lane, towers);
+              if (!syn) return null;
+              return (
+                <motion.div
+                  key={lane}
+                  initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                  className="flex items-start gap-2 p-2 rounded-lg"
+                  style={{ background: `${syn.color}18`, border: `1px solid ${syn.color}50` }}
+                >
+                  <motion.span
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="text-xl shrink-0 leading-none"
+                  >{syn.emoji}</motion.span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold" style={{ color: syn.color }}>L{lane+1}: {syn.name}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">{syn.desc}</div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-[10px] text-gray-600 mb-2">
+            No synergies active — pair <span className="text-gray-400">different</span> cross-provider towers in a lane to unlock unique mechanics
+          </div>
         )}
+
+        {/* Synergy reference (all possible) */}
+        <details className="text-[10px]">
+          <summary className="text-gray-600 cursor-pointer hover:text-gray-400 list-none">▶ All synergies ({LANE_SYNERGIES.length} total)</summary>
+          <div className="mt-2 grid grid-cols-1 gap-1">
+            {LANE_SYNERGIES.map(syn => {
+              const active = Array.from({ length: LANES }).some((_, l) => getLaneSynergy(l, towers)?.id === syn.id);
+              return (
+                <div key={syn.id} className={`flex items-start gap-1.5 ${active ? 'opacity-100' : 'opacity-40'}`}>
+                  <span>{syn.emoji}</span>
+                  <span className="font-bold" style={{ color: syn.color }}>{syn.name}</span>
+                  <span className="text-gray-500">— {syn.desc}</span>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+
+        {/* Type chart reference (collapsible) */}
+        <AnimatePresence>
+          {showTypeChart && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden mt-3 pt-3 border-t border-gray-700/50"
+            >
+              <div className="text-[10px] text-gray-500 mb-2">Attacker → Defender — <span className="text-green-400">▲ strong</span> / <span className="text-red-400">▼ weak</span></div>
+              <div className="overflow-x-auto">
+                <table className="text-[9px] border-collapse w-full">
+                  <thead>
+                    <tr>
+                      <th className="p-1 text-gray-600 text-left">ATK ▶ DEF</th>
+                      {Object.keys(PROVIDERS).map(p => (
+                        <th key={p} className="p-1 text-center" style={{ color: PROVIDERS[p].color }}>
+                          {PROVIDERS[p].icon ?? p.slice(0,3)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.keys(PROVIDERS).map(atk => (
+                      <tr key={atk}>
+                        <td className="p-1 font-bold" style={{ color: PROVIDERS[atk].color }}>{PROVIDERS[atk].icon ?? atk.slice(0,3)}</td>
+                        {Object.keys(PROVIDERS).map(def => {
+                          const mult = getTypeMultiplier(atk, def);
+                          const bg = mult >= 1.25 ? '#22c55e30' : mult >= 1.1 ? '#86efac18' : mult <= 0.76 ? '#ef444430' : mult <= 0.9 ? '#fca5a518' : 'transparent';
+                          const clr = mult >= 1.25 ? '#4ade80' : mult >= 1.1 ? '#86efac' : mult <= 0.76 ? '#f87171' : mult <= 0.9 ? '#fca5a5' : '#4b5563';
+                          return (
+                            <td key={def} className="p-1 text-center" style={{ background: bg, color: clr }}>
+                              {atk === def ? '―' : mult.toFixed(2)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Bottom panel: card picker + log */}
@@ -597,7 +801,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
           <div className="mt-2 text-[10px] text-gray-500 space-y-0.5">
             <div>🏰 Click any of the 4 tower columns to place • Click placed tower to sell (50% refund)</div>
             <div>⚡ Power+Speed → DPS · 🎯 Intelligence → range · 🔮 type matchups apply</div>
-            <div>✨ <span className="text-purple-400">Synergies:</span> 2× same=+40% · Frontier Alliance (Claude+GPT)=+50% · Open Stack=+65% · Ensemble=+90%…</div>
+            <div>✨ <span className="text-purple-400">Synergies:</span> Mix <span className="text-yellow-400">cross-provider</span> towers in a lane — each combo unlocks a unique mechanic (chain, double-fire, invulnerable…)</div>
           </div>
         </div>
 
@@ -648,7 +852,9 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
               </h2>
               <p className="text-gray-400 mb-6 text-sm">
                 {phase === 'victory'
-                  ? `All ${MAX_WAVES} waves repelled. You are the ultimate defender!`
+                  ? maxWaves >= 9999
+                    ? `Survived ${wave} infinite waves! Legendary defender!`
+                    : `All ${maxWaves} waves repelled. You are the ultimate defender!`
                   : `You survived ${wave} wave${wave !== 1 ? 's' : ''} before your base fell.`}
               </p>
               <div className="bg-gray-800/60 rounded-2xl p-4 mb-6 space-y-2">
@@ -658,7 +864,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">XP Earned</span>
-                  <span className="font-black text-blue-400">+{phase === 'victory' ? 1000 : Math.max(50, wave * 75)}</span>
+                  <span className="font-black text-blue-400">+{totalXp}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Enemies Killed</span>
@@ -666,8 +872,14 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Waves Survived</span>
-                  <span className="font-bold text-gray-300">{wave}/{MAX_WAVES}</span>
+                  <span className="font-bold text-gray-300">{maxWaves >= 9999 ? wave : `${wave}/${maxWaves}`}</span>
                 </div>
+                {gm && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Mode</span>
+                    <span className="font-bold" style={{ color: gm.color }}>{gm.emoji} {gm.label}</span>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3">
                 <motion.button
@@ -675,6 +887,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                   onClick={() => {
                     setPhase('setup'); setWave(0); setLives(LIVES_START); setCredits(400);
                     setKills(0); setTowers({}); setEnemies([]); setLog([]); setSpawnQueue([]); setWaveEnemiesLeft(0);
+                    setGameMode(null); // return to mode selector
                   }}
                   className="flex-1 py-3 rounded-xl border border-gray-600 text-gray-300 hover:bg-gray-800 text-sm font-medium"
                 >
@@ -683,7 +896,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                 <motion.button
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    onXpGain(phase === 'victory' ? 1000 : Math.max(50, wave * 75));
+                    onXpGain(totalXp);
                     onComplete(totalReward);
                   }}
                   className="flex-1 py-3 rounded-xl font-bold text-sm shadow-lg"

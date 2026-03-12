@@ -1,0 +1,539 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Castle, Shield, Zap, SkipForward, Play, Pause } from 'lucide-react';
+import { CARD_POOL, RARITIES, calculateHP, PROVIDERS, getTypeMultiplier } from '../data/cards';
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+const LANES = 4;
+const COLS  = 7;  // 0–1 = tower zone, 2–6 = combat lane
+const TOWER_COLS = [0, 1];
+const CELL_W = 80;
+const CELL_H = 68;
+const TICK_MS = 600;
+const MAX_WAVES = 10;
+const LIVES_START = 20;
+
+const RARITY_ORDER = { COMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5 };
+
+// ─── Enemy archetypes ─────────────────────────────────────────────────────────
+const ENEMY_TYPES = [
+  { name: 'Rogue GPT',     provider: 'GPT',      icon: '🤖', baseHp: 120, speed: 1, reward: 15 },
+  { name: 'Feral Llama',   provider: 'LLAMA',     icon: '🦙', baseHp: 160, speed: 1, reward: 20 },
+  { name: 'Ghost Gemini',  provider: 'GEMINI',    icon: '♊', baseHp: 100, speed: 2, reward: 25 },
+  { name: 'Rogue Claude',  provider: 'CLAUDE',    icon: '⚡', baseHp: 140, speed: 1, reward: 20 },
+  { name: 'Feral DeepSeek',provider: 'DEEPSEEK',  icon: '🔮', baseHp: 130, speed: 1, reward: 20 },
+  { name: 'Corrupt Mistral',provider: 'MISTRAL',  icon: '💨', baseHp: 110, speed: 2, reward: 22 },
+];
+
+const BOSS_TYPES = [
+  { name: 'Omega GPT-X', provider: 'GPT',   icon: '👹', baseHp: 600, speed: 1, reward: 150, isBoss: true },
+  { name: 'Apex Claude', provider: 'CLAUDE',icon: '💀', baseHp: 700, speed: 1, reward: 200, isBoss: true },
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+let eidCounter = 0;
+function makeEnemy(wave, lane) {
+  const isBossWave = wave === 5 || wave === MAX_WAVES;
+  const types = isBossWave ? BOSS_TYPES : ENEMY_TYPES;
+  const t = types[Math.floor(Math.random() * types.length)];
+  const hpMult = 1 + (wave - 1) * 0.25 + (isBossWave ? 2 : 0);
+  return {
+    id: ++eidCounter,
+    ...t,
+    maxHp: Math.floor(t.baseHp * hpMult),
+    hp: Math.floor(t.baseHp * hpMult),
+    lane,
+    col: COLS - 1,
+    progress: 0,
+  };
+}
+
+function towerDps(card) {
+  const power = card.stats?.power ?? 80;
+  const speed = card.stats?.speed ?? 80;
+  return Math.max(8, Math.floor(power * 0.35 * (speed / 100)));
+}
+
+function towerRange(card) {
+  return 1 + Math.floor((card.stats?.intelligence ?? 80) / 60);
+}
+
+// ─── Grid Cell ────────────────────────────────────────────────────────────────
+function GridCell({ col, lane, card, enemy, isDropTarget, onClick, rarity }) {
+  const isTowerZone = TOWER_COLS.includes(col);
+  const color = card ? (PROVIDERS[card.provider]?.color || '#6b7280') : '#1f2937';
+  return (
+    <motion.div
+      whileHover={isTowerZone && !card ? { scale: 1.05 } : {}}
+      onClick={onClick}
+      className={`relative flex items-center justify-center rounded-lg border transition-colors select-none
+        ${isTowerZone ? 'cursor-pointer' : 'cursor-default'}
+        ${isDropTarget ? 'border-blue-400/80 bg-blue-900/30' : 'border-gray-700/30'}
+      `}
+      style={{
+        width: CELL_W, height: CELL_H,
+        background: card ? `${color}22` : isTowerZone ? '#111827' : 'transparent',
+        borderColor: card ? `${color}60` : undefined,
+      }}
+    >
+      {isTowerZone && !card && (
+        <span className="text-2xl opacity-20 select-none">+</span>
+      )}
+      {card && (
+        <div className="text-center">
+          <div className="text-2xl">{card.providerInfo?.icon || '🤖'}</div>
+          <div className="text-[9px] text-gray-300 truncate w-16 text-center">{card.name.split(' ')[0]}</div>
+          <div className="text-[8px] font-bold" style={{ color: RARITIES[card.rarity]?.color }}>
+            {card.rarity.slice(0,3)}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) {
+  const [phase, setPhase]     = useState('setup'); // setup | wave | paused | gameover | victory
+  const [collection, setCollection] = useState([]);
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [towers, setTowers]   = useState({}); // key: `${lane}-${col}` → card
+  const [enemies, setEnemies] = useState([]);
+  const [wave, setWave]       = useState(0);
+  const [lives, setLives]     = useState(LIVES_START);
+  const [credits, setCredits] = useState(300);
+  const [kills, setKills]     = useState(0);
+  const [log, setLog]         = useState([]);
+  const [waveEnemiesLeft, setWaveEnemiesLeft] = useState(0);
+  const [spawnQueue, setSpawnQueue]   = useState([]);
+  const [paused, setPaused]   = useState(false);
+  const tickRef = useRef(null);
+  const logRef  = useRef(null);
+  const stateRef = useRef({});
+
+  // Keep stateRef current
+  useEffect(() => {
+    stateRef.current = { enemies, towers, lives, kills, credits, wave, spawnQueue, waveEnemiesLeft, paused };
+  });
+
+  // Load collection
+  useEffect(() => {
+    if (!user) return;
+    const key = typeof user === 'string' ? user : (user.id || user.username);
+    const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
+    const seen = new Set();
+    const deduped = saved.filter(c => {
+      const k = `${c.baseId || c.id}-${c.rarity}`;
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    }).sort((a, b) => (RARITY_ORDER[b.rarity] || 0) - (RARITY_ORDER[a.rarity] || 0));
+    setCollection(deduped);
+  }, [user]);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [log]);
+
+  function addLog(msg) { setLog(prev => [...prev.slice(-30), msg]); }
+
+  // Build wave spawn queue
+  function buildSpawnQueue(waveNum) {
+    const isBoss = waveNum === 5 || waveNum === MAX_WAVES;
+    const count = isBoss ? 3 : 5 + waveNum * 2;
+    const queue = [];
+    for (let i = 0; i < count; i++) {
+      const lane = Math.floor(Math.random() * LANES);
+      const delay = i * 1200;
+      queue.push({ lane, delay, sent: false });
+    }
+    return queue;
+  }
+
+  function startWave() {
+    const newWave = stateRef.current.wave + 1;
+    setWave(newWave);
+    const queue = buildSpawnQueue(newWave);
+    setSpawnQueue(queue);
+    setWaveEnemiesLeft(queue.length);
+    setPhase('wave');
+    addLog(`🌊 Wave ${newWave}/${MAX_WAVES} incoming!${newWave === 5 || newWave === MAX_WAVES ? ' ⚠️ BOSS WAVE!' : ''}`);
+  }
+
+  // ── Game tick ──────────────────────────────────────────────────────────────
+  const tick = useCallback(() => {
+    const s = stateRef.current;
+    if (s.paused) return;
+
+    let newEnemies = [...s.enemies];
+    let newTowers  = { ...s.towers };
+    let newLives   = s.lives;
+    let newKills   = s.kills;
+    let newCredits = s.credits;
+    let newWaveEnemiesLeft = s.waveEnemiesLeft;
+    const msgs = [];
+
+    // Move enemies
+    newEnemies = newEnemies.map(e => ({ ...e, col: e.col - (e.speed > 1 && Math.random() > 0.5 ? 2 : 1) }));
+
+    // Enemies that reached base (col <= tower zone)
+    const escaped = newEnemies.filter(e => e.col < TOWER_COLS[TOWER_COLS.length - 1]);
+    if (escaped.length > 0) {
+      newLives -= escaped.length;
+      msgs.push(`💔 ${escaped.length} enemy reached base! Lives: ${newLives}`);
+    }
+    newEnemies = newEnemies.filter(e => e.col >= TOWER_COLS[TOWER_COLS.length - 1]);
+
+    // Tower attacks
+    for (const key of Object.keys(newTowers)) {
+      const [laneStr, colStr] = key.split('-');
+      const tLane = parseInt(laneStr), tCol = parseInt(colStr);
+      const card = newTowers[key];
+      if (!card) continue;
+      const range = towerRange(card);
+      const dmg   = towerDps(card);
+
+      for (let i = 0; i < newEnemies.length; i++) {
+        const e = newEnemies[i];
+        if (e.lane !== tLane) continue;
+        if (e.col > tCol + range) continue;
+        // Attack this enemy
+        const typeMult = getTypeMultiplier(card.provider, e.provider);
+        const finalDmg = Math.floor(dmg * typeMult);
+        newEnemies[i] = { ...newEnemies[i], hp: newEnemies[i].hp - finalDmg };
+        break; // one target per tower per tick
+      }
+    }
+
+    // Remove dead enemies
+    const dead = newEnemies.filter(e => e.hp <= 0);
+    if (dead.length > 0) {
+      newKills += dead.length;
+      const earned = dead.reduce((sum, e) => sum + e.reward, 0);
+      newCredits += earned;
+      newEnemies = newEnemies.filter(e => e.hp > 0);
+      if (dead.some(e => e.isBoss)) msgs.push(`💥 BOSS DEFEATED! +${dead.reduce((s,e) => s+e.reward, 0)} credits`);
+      else msgs.push(`💀 ${dead.length} ${dead.length > 1 ? 'enemies' : 'enemy'} destroyed! +${dead.reduce((s,e) => s+e.reward, 0)} credits`);
+    }
+
+    msgs.forEach(addLog);
+
+    // Apply state
+    setEnemies(newEnemies);
+    setLives(newLives);
+    setKills(newKills);
+    setCredits(newCredits);
+
+    // Wave clear check
+    if (newEnemies.length === 0 && newWaveEnemiesLeft === 0) {
+      const waveBonus = 100 + s.wave * 20;
+      setCredits(c => c + waveBonus);
+      addLog(`✅ Wave ${s.wave} cleared! +${waveBonus} credits`);
+      if (s.wave >= MAX_WAVES) {
+        setPhase('victory');
+      } else {
+        setPhase('setup');
+      }
+    }
+
+    // Defeat check
+    if (newLives <= 0) {
+      setLives(0);
+      setPhase('gameover');
+      addLog('💀 Base destroyed! Game over!');
+    }
+  }, []);
+
+  // Spawn queue processor
+  const spawnTick = useCallback(() => {
+    const now = Date.now();
+    setSpawnQueue(prev => {
+      if (prev.every(q => q.sent)) return prev;
+      const updated = [...prev];
+      let anySpawned = false;
+      for (let i = 0; i < updated.length; i++) {
+        if (!updated[i].sent) {
+          if (!updated[i].spawnAt) { updated[i] = { ...updated[i], spawnAt: now + updated[i].delay }; }
+          if (now >= updated[i].spawnAt) {
+            updated[i] = { ...updated[i], sent: true };
+            const newEnemy = makeEnemy(stateRef.current.wave, updated[i].lane);
+            setEnemies(prev => [...prev, newEnemy]);
+            anySpawned = true;
+          }
+        }
+      }
+      if (anySpawned) {
+        const remaining = updated.filter(q => !q.sent).length;
+        // Also decrement waveEnemiesLeft when all spawned (enemies in play handle rest)
+        if (remaining === 0) setWaveEnemiesLeft(0);
+      }
+      return updated;
+    });
+  }, []);
+
+  // Start/stop tick loop
+  useEffect(() => {
+    if (phase === 'wave' && !paused) {
+      tickRef.current = setInterval(() => { tick(); spawnTick(); }, TICK_MS);
+    } else {
+      clearInterval(tickRef.current);
+    }
+    return () => clearInterval(tickRef.current);
+  }, [phase, paused, tick, spawnTick]);
+
+  function placeTower(lane, col) {
+    if (!selectedCard) return;
+    const key = `${lane}-${col}`;
+    if (towers[key]) return;
+    const cost = (RARITY_ORDER[selectedCard.rarity] || 1) * 50;
+    if (credits < cost) { addLog(`❌ Need ${cost} credits to place this card`); return; }
+    setTowers(prev => ({ ...prev, [key]: selectedCard }));
+    setCredits(c => c - cost);
+    addLog(`🏰 Placed ${selectedCard.name} in lane ${lane + 1}, col ${col + 1} (cost: ${cost})`);
+    setSelectedCard(null);
+  }
+
+  function removeTower(lane, col) {
+    const key = `${lane}-${col}`;
+    if (!towers[key]) return;
+    const refund = Math.floor((RARITY_ORDER[towers[key].rarity] || 1) * 25);
+    setTowers(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setCredits(c => c + refund);
+  }
+
+  const totalReward = wave >= MAX_WAVES
+    ? Math.floor(kills * 50 + 1000)
+    : Math.floor(kills * 50 + wave * 100);
+
+  return (
+    <div className="min-h-screen p-4 max-w-5xl mx-auto">
+      {/* Header */}
+      <header className="flex items-center justify-between mb-4">
+        <motion.button
+          whileHover={{ x: -3 }}
+          onClick={() => {
+            if (phase === 'wave' && !window.confirm('Abandon defense?')) return;
+            onBack();
+          }}
+          className="flex items-center gap-2 text-gray-300 hover:text-white"
+        >
+          <ArrowLeft className="w-5 h-5" /> Back
+        </motion.button>
+        <h1 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
+          🏰 Tower Defense
+        </h1>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-red-400">❤️ {lives}</span>
+          <span className="text-yellow-400">💰 {credits}</span>
+          <span className="text-blue-400">💀 {kills}</span>
+        </div>
+      </header>
+
+      {/* Wave progress */}
+      <div className="flex items-center gap-2 mb-4 text-xs text-gray-400">
+        <span>Wave {wave}/{MAX_WAVES}</span>
+        <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div className="h-full bg-amber-500 rounded-full transition-all duration-500" style={{ width: `${(wave / MAX_WAVES) * 100}%` }} />
+        </div>
+        {phase === 'wave' && (
+          <button onClick={() => setPaused(p => !p)} className="flex items-center gap-1 text-gray-300 hover:text-white">
+            {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            {paused ? 'Resume' : 'Pause'}
+          </button>
+        )}
+      </div>
+
+      {/* Grid */}
+      <div className="mb-4 overflow-x-auto">
+        <div className="inline-block">
+          {/* Column labels */}
+          <div className="flex mb-1">
+            <div style={{ width: 40 }} />
+            {Array.from({ length: COLS }).map((_, col) => (
+              <div key={col} style={{ width: CELL_W }} className="text-center text-xs text-gray-600">
+                {TOWER_COLS.includes(col) ? '🏰' : col === COLS - 1 ? '→' : ''}
+              </div>
+            ))}
+          </div>
+          {Array.from({ length: LANES }).map((_, lane) => (
+            <div key={lane} className="flex items-center mb-1 gap-0.5">
+              <div style={{ width: 40 }} className="text-xs text-gray-500 text-right pr-2">L{lane+1}</div>
+              {Array.from({ length: COLS }).map((_, col) => {
+                const key = `${lane}-${col}`;
+                const card = towers[key];
+                const isTZ = TOWER_COLS.includes(col);
+                // Find enemies in this cell
+                const cellEnemies = enemies.filter(e => e.lane === lane && e.col === col);
+                return (
+                  <div key={col} className="relative" style={{ width: CELL_W, height: CELL_H, margin: '0 1px' }}>
+                    <GridCell
+                      col={col} lane={lane} card={card}
+                      isDropTarget={isTZ && !!selectedCard && !card}
+                      onClick={() => {
+                        if (isTZ) {
+                          if (card) removeTower(lane, col);
+                          else placeTower(lane, col);
+                        }
+                      }}
+                    />
+                    {/* Enemy overlays */}
+                    {cellEnemies.map(e => (
+                      <motion.div
+                        key={e.id}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
+                      >
+                        <div className={`text-xl ${e.isBoss ? 'text-3xl' : ''}`}>{e.icon}</div>
+                        <div className="w-10 h-1 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-red-500 rounded-full transition-all"
+                            style={{ width: `${Math.max(0, (e.hp / e.maxHp) * 100)}%` }} />
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom panel: card picker + log */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Card picker */}
+        <div className="bg-gray-900/60 border border-gray-700/40 rounded-xl p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-bold text-gray-300">Choose Tower {selectedCard && <span className="text-blue-400">(placing {selectedCard.name})</span>}</span>
+            {selectedCard && <button onClick={() => setSelectedCard(null)} className="text-xs text-gray-500 hover:text-white">Cancel</button>}
+          </div>
+          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+            {collection.map(card => {
+              const cost = (RARITY_ORDER[card.rarity] || 1) * 50;
+              const canAfford = credits >= cost;
+              const color = PROVIDERS[card.provider]?.color || '#6b7280';
+              return (
+                <motion.div
+                  key={card.id}
+                  whileHover={canAfford ? { scale: 1.05 } : {}}
+                  whileTap={canAfford ? { scale: 0.95 } : {}}
+                  onClick={() => canAfford && setSelectedCard(selectedCard?.id === card.id ? null : card)}
+                  className={`p-2 rounded-lg border cursor-pointer transition-all ${
+                    selectedCard?.id === card.id ? 'border-blue-400 bg-blue-900/40' :
+                    canAfford ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' :
+                    'border-gray-800 bg-gray-900/50 opacity-40 cursor-not-allowed'
+                  }`}
+                  style={selectedCard?.id === card.id ? { boxShadow: `0 0 12px ${color}40` } : {}}
+                >
+                  <div className="text-xl text-center">{card.providerInfo?.icon || '🤖'}</div>
+                  <div className="text-[10px] text-gray-300 text-center w-14 truncate">{card.name.split(' ')[0]}</div>
+                  <div className="text-[9px] text-center font-bold" style={{ color: RARITIES[card.rarity]?.color }}>{card.rarity.slice(0,3)}</div>
+                  <div className="text-[9px] text-yellow-400 text-center mt-0.5">💰{cost}</div>
+                </motion.div>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-[10px] text-gray-500 space-y-0.5">
+            <div>🏰 Click a tower slot to place • Click placed tower to sell (50% refund)</div>
+            <div>⚡ Tower damage scales with card Power + Speed stats</div>
+            <div>🎯 Range scales with Intelligence stat</div>
+          </div>
+        </div>
+
+        {/* Battle log */}
+        <div ref={logRef} className="bg-gray-900/60 border border-gray-700/40 rounded-xl p-3 h-52 overflow-y-auto">
+          {log.length === 0 && <div className="text-xs text-gray-600 text-center pt-8">Place towers and start the first wave!</div>}
+          {log.map((l, i) => <div key={i} className="text-xs text-gray-300 leading-relaxed">{l}</div>)}
+        </div>
+      </div>
+
+      {/* Action button */}
+      <div className="mt-4 flex gap-3">
+        {phase === 'setup' && (
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={startWave}
+            className="flex-1 py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-amber-500 to-orange-600 text-black shadow-lg flex items-center justify-center gap-2"
+          >
+            <SkipForward className="w-5 h-5" />
+            {wave === 0 ? 'Start Wave 1' : `Start Wave ${wave + 1}`}
+          </motion.button>
+        )}
+        {phase === 'wave' && (
+          <div className="flex-1 py-4 rounded-xl font-bold text-lg bg-gray-800/60 text-gray-300 flex items-center justify-center gap-2">
+            <Zap className="w-5 h-5 text-yellow-400 animate-pulse" />
+            Wave {wave} in progress… ({enemies.length} active)
+          </div>
+        )}
+      </div>
+
+      {/* ── RESULT OVERLAYS ───────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {(phase === 'gameover' || phase === 'victory') && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+              className="bg-gray-900 rounded-3xl p-8 max-w-sm w-full border text-center"
+              style={{ borderColor: phase === 'victory' ? '#f59e0b50' : '#ef444450' }}
+            >
+              <div className="text-7xl mb-4">{phase === 'victory' ? '🏰' : '💥'}</div>
+              <h2 className={`text-3xl font-black mb-2 ${phase === 'victory' ? 'text-amber-400' : 'text-red-400'}`}>
+                {phase === 'victory' ? 'Fortress Held!' : 'Base Destroyed!'}
+              </h2>
+              <p className="text-gray-400 mb-6 text-sm">
+                {phase === 'victory'
+                  ? `All ${MAX_WAVES} waves repelled. You are the ultimate defender!`
+                  : `You survived ${wave} wave${wave !== 1 ? 's' : ''} before your base fell.`}
+              </p>
+              <div className="bg-gray-800/60 rounded-2xl p-4 mb-6 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Credits Earned</span>
+                  <span className="font-black text-yellow-400">+{totalReward}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">XP Earned</span>
+                  <span className="font-black text-blue-400">+{phase === 'victory' ? 300 : Math.max(20, wave * 25)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Enemies Killed</span>
+                  <span className="font-bold text-gray-300">{kills}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Waves Survived</span>
+                  <span className="font-bold text-gray-300">{wave}/{MAX_WAVES}</span>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setPhase('setup'); setWave(0); setLives(LIVES_START); setCredits(300);
+                    setKills(0); setTowers({}); setEnemies([]); setLog([]); setSpawnQueue([]); setWaveEnemiesLeft(0);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-gray-600 text-gray-300 hover:bg-gray-800 text-sm font-medium"
+                >
+                  Play Again
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    onXpGain(phase === 'victory' ? 300 : Math.max(20, wave * 25));
+                    onComplete(totalReward);
+                  }}
+                  className="flex-1 py-3 rounded-xl font-bold text-sm shadow-lg"
+                  style={{ background: phase === 'victory' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : '#374151' }}
+                >
+                  Collect Reward
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

@@ -382,7 +382,7 @@ export const LEVEL_REWARDS = {
   2:  { label: 'First Steps',    packs: { basic: 2 } },
   3:  { label: 'Strategist',     packs: { basic: 1 }, unlock: 'deck-battle', unlockLabel: '⚔️ Deck Battle Unlocked!' },
   4:  { label: 'Rising Star',    packs: { premium: 1 } },
-  5:  { label: 'AI Devotee',     packs: { claude_pack: 1 } },
+  5:  { label: 'AI Devotee',     packs: { claude_pack: 1 }, unlock: 'tower-defense', unlockLabel: '🏰 Tower Defense Unlocked!' },
   6:  { label: 'Pack Opener',    packs: { basic: 3 } },
   7:  { label: 'Veteran',        packs: { premium: 2 } },
   8:  { label: 'Champion',       packs: { mega: 1 }, unlock: 'leaderboard', unlockLabel: '🏆 Leaderboard Unlocked!' },
@@ -396,6 +396,42 @@ export const LEVEL_REWARDS = {
   25: { label: 'Mega Collector', packs: { mega: 5 } },
   30: { label: 'Grand Master',   packs: { legendary: 3 } },
 };
+
+// ── Type effectiveness chart ─────────────────────────────────────────────────
+// Each provider has strengths (1.3×) and weaknesses (0.7×) against others.
+// Think of it like a rock-paper-scissors cycle plus unique cross-matchups.
+//
+// Story rationale:
+//   CLAUDE  → strong analytical reasoning beats DEEPSEEK's pattern tricks
+//   DEEPSEEK→ deep code insight outsmarts LLAMA's open versatility
+//   LLAMA   → open-source swarm pressure overwhelms MISTRAL's efficiency
+//   MISTRAL → European precision efficiency counters GEMINI's multimodal sprawl
+//   GEMINI  → Google's multimodal scale overpowers GPT's text focus
+//   GPT     → broad world knowledge and RLHF overpowers CLAUDE's caution
+export const TYPE_CHART = {
+  //           vs CLAUDE  DEEPSEEK  GEMINI  GPT   LLAMA  MISTRAL
+  CLAUDE:   { CLAUDE:1.0, DEEPSEEK:1.3, GEMINI:0.85, GPT:0.75, LLAMA:1.0,  MISTRAL:1.1  },
+  DEEPSEEK: { CLAUDE:0.75, DEEPSEEK:1.0, GEMINI:1.0,  GPT:1.0,  LLAMA:1.3,  MISTRAL:0.9  },
+  GEMINI:   { CLAUDE:1.15, DEEPSEEK:1.0, GEMINI:1.0,  GPT:1.3,  LLAMA:0.9,  MISTRAL:0.75 },
+  GPT:      { CLAUDE:1.3,  DEEPSEEK:1.0, GEMINI:0.75, GPT:1.0,  LLAMA:1.0,  MISTRAL:1.0  },
+  LLAMA:    { CLAUDE:1.0,  DEEPSEEK:0.75,GEMINI:1.1,  GPT:1.0,  LLAMA:1.0,  MISTRAL:1.3  },
+  MISTRAL:  { CLAUDE:0.9,  DEEPSEEK:1.1, GEMINI:1.3,  GPT:1.0,  LLAMA:0.75, MISTRAL:1.0  },
+};
+
+// Returns the type damage multiplier when `attackerProvider` attacks `defenderProvider`
+export function getTypeMultiplier(attackerProvider, defenderProvider) {
+  return TYPE_CHART[attackerProvider]?.[defenderProvider] ?? 1.0;
+}
+
+// Human-readable type matchup description
+export function getTypeMatchupText(attackerProvider, defenderProvider) {
+  const mult = getTypeMultiplier(attackerProvider, defenderProvider);
+  if (mult >= 1.25) return { label: 'Super Effective!', color: '#22c55e', emoji: '🔥' };
+  if (mult >= 1.1)  return { label: 'Effective',        color: '#86efac', emoji: '✅' };
+  if (mult <= 0.76) return { label: 'Not Very Effective', color: '#f87171', emoji: '❌' };
+  if (mult <= 0.9)  return { label: 'Slightly Weak',    color: '#fca5a5', emoji: '⚠️' };
+  return { label: 'Normal',              color: '#9ca3af', emoji: '➖' };
+}
 
 // Battle moves - each uses a specific stat and has unique effects
 export const MOVES = {

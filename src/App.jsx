@@ -18,6 +18,7 @@ import { CardCollection } from './components/CardCollection';
 import { PackOpening } from './components/PackOpening';
 import { GameMode } from './components/GameMode';
 import { DeckBattle } from './components/DeckBattle';
+import { TowerDefense } from './components/TowerDefense';
 import { Leaderboard } from './components/Leaderboard';
 import { ExperienceRoad } from './components/ExperienceRoad';
 import { useAuth } from './hooks/useAuth';
@@ -183,6 +184,10 @@ function App() {
       setView('dashboard');
       return;
     }
+    if (target === 'tower-defense' && !unlockedFeatures.includes('tower-defense')) {
+      setView('dashboard');
+      return;
+    }
     setView(target);
   };
 
@@ -222,10 +227,18 @@ function App() {
             currency={currency}
             onComplete={(reward) => {
               updateCurrency(reward);
-              updatePacks('basic', 1);
-              if (user && user.id && isOnline) {
-                api.recordBattleResult(user.id, 'win', 0, null); // simplified
-              }
+              setView('dashboard');
+            }}
+            onBack={() => setView('dashboard')}
+            onXpGain={addXp}
+          />
+        );
+      case 'tower-defense':
+        return (
+          <TowerDefense
+            user={user}
+            onComplete={(reward) => {
+              updateCurrency(reward);
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}

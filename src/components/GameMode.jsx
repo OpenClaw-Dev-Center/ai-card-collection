@@ -1,1020 +1,689 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowLeft, Swords, Coins, Heart, Zap, Shield, Eye, Wind, Brain,
-  Sparkles, Repeat
-} from 'lucide-react';
+import { ArrowLeft, Swords, Shield, Eye, Wind, Zap, Star, ChevronRight, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
-import { CARD_POOL, RARITIES, MOVES, calculateHP, PROVIDERS } from '../data/cards';
+import { CARD_POOL, RARITIES, MOVES, calculateHP, PROVIDERS, getTypeMultiplier, getTypeMatchupText } from '../data/cards';
 
-// Ability icons mapping
-const ABILITY_ICONS = {
-  'Analytical Precision': Eye,
-  'Adaptive Learning': Brain,
-  'Multimodal Mastery': Sparkles,
-  'Versatile Tactician': Repeat,
-  'Efficient Operations': Zap,
-  'Precognitive Analysis': Eye
+// ─── Constants ──────────────────────────────────────────────────────────────
+const RARITY_ORDER = { COMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5 };
+const DIFFICULTY_TIERS = [
+  { id: 'easy',   label: 'Rookie',      color: '#22c55e', aiIntelligence: 0.3,  rewardMult: 1.0, xpMult: 1.0, description: 'AI plays randomly. Good for learning.' },
+  { id: 'normal', label: 'Veteran',     color: '#3b82f6', aiIntelligence: 0.6,  rewardMult: 1.5, xpMult: 1.5, description: 'AI makes smart decisions. Standard challenge.' },
+  { id: 'hard',   label: 'Champion',    color: '#f59e0b', aiIntelligence: 0.85, rewardMult: 2.5, xpMult: 2.5, description: 'AI plays near-optimally. High risk, high reward.' },
+  { id: 'expert', label: 'Grandmaster', color: '#ef4444', aiIntelligence: 1.0,  rewardMult: 4.0, xpMult: 4.0, description: 'Perfect AI. Only the best cards survive.' },
+];
+
+const MOVE_META = {
+  strike: { icon: Swords, color: 'from-red-600 to-orange-500',    label: 'Strike', hint: 'High dmg · 25⚡' },
+  block:  { icon: Shield, color: 'from-blue-600 to-cyan-500',     label: 'Block',  hint: 'Reduce dmg 70% · 15⚡' },
+  focus:  { icon: Eye,    color: 'from-violet-600 to-purple-500', label: 'Focus',  hint: 'Charge +20% Strike · 20⚡' },
+  blitz:  { icon: Wind,   color: 'from-yellow-500 to-amber-400',  label: 'Blitz',  hint: 'Penetrates defense · 35⚡' },
 };
 
-// Move icons mapping
-const MOVE_ICONS = {
-  strike: Swords,
-  block: Shield,
-  focus: Eye,
-  blitz: Wind
-};
-
-// Helper: Get provider ability from PROVIDERS
-const getProviderAbility = (providerKey) => {
-  if (!providerKey) return null;
-  const provider = PROVIDERS[providerKey];
-  return provider?.ability || null;
-};
-
-// Helper: Get ability icon component
-const getAbilityIcon = (iconName) => {
-  return ABILITY_ICONS[iconName] || Sparkles;
-};
-
-// Helper: Get ability color based on provider
-const getAbilityColor = (providerKey) => {
-  const colors = {
-    CLAUDE: '#f59e0b',
-    GPT: '#10b981',
-    GEMINI: '#3b82f6',
-    LLAMA: '#8b5cf6',
-    MISTRAL: '#ec4899',
-    DEEPSEEK: '#6366f1'
-  };
-  return colors[providerKey] || '#6b7280';
-};
-
-export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => {} }) {
-  const [collection, setCollection] = useState([]);
-  const [selectedCard, setSelectedCard] = useState(null);
-  const [opponentCard, setOpponentCard] = useState(null);
-  const [battleState, setBattleState] = useState('selecting'); // selecting, battling, result
-  const [playerEnergy, setPlayerEnergy] = useState(100);
-  const [opponentEnergy, setOpponentEnergy] = useState(100);
-  const [playerHP, setPlayerHP] = useState(0);
-  const [opponentHP, setOpponentHP] = useState(0);
-  const [playerMove, setPlayerMove] = useState(null);
-  const [opponentMove, setOpponentMove] = useState(null);
-  const [battleLog, setBattleLog] = useState([]);
-  const [turnCount, setTurnCount] = useState(0);
-  const [damageNumbers, setDamageNumbers] = useState([]);
-  const [winner, setWinner] = useState(null);
-  const [reward, setReward] = useState(0);
-
-  // Provider ability state
-  const [playerAbilityTriggered, setPlayerAbilityTriggered] = useState(false);
-  const [opponentAbilityTriggered, setOpponentAbilityTriggered] = useState(false);
-  const [predictedMove, setPredictedMove] = useState(null); // DeepSeek prediction
-  const [opponentMovePreview, setOpponentMovePreview] = useState(null); // Claude reveal
-  const [playerStatAllocation, setPlayerStatAllocation] = useState(null); // Llama switch
-  const [opponentStatAllocation, setOpponentStatAllocation] = useState(null); // Llama switch
-  const [playerBuffs, setPlayerBuffs] = useState({}); // GPT random buff
-  const [opponentBuffs, setOpponentBuffs] = useState({}); // GPT random buff
-  const [focusBonus, setFocusBonus] = useState(0); // Focus accumulation
-  const [opponentFocusBonus, setOpponentFocusBonus] = useState(0); // Focus accumulation
-  const [moveCooldowns, setMoveCooldowns] = useState({}); // Mistral cooldown
-
-  useEffect(() => {
-    if (user) {
-      const key = typeof user === 'string' ? user : (user.id || user.username);
-      const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
-      // Deduplicate: one representative per baseId+rarity
-      const seen = new Set();
-      const deduped = saved.filter(c => {
-        const k = `${c.baseId}-${c.rarity}`;
-        if (seen.has(k)) return false;
-        seen.add(k); return true;
-      });
-      setCollection(deduped);
-    }
-  }, [user]);
-
-  const initializeBattle = () => {
-    if (!selectedCard || !opponentCard) return;
-
-    // Calculate HP based on stats
-    const playerMaxHP = calculateHP(selectedCard);
-    const opponentMaxHP = calculateHP(opponentCard);
-
-    setPlayerHP(playerMaxHP);
-    setOpponentHP(opponentMaxHP);
-    setPlayerEnergy(100);
-    setOpponentEnergy(100);
-    setBattleState('battling');
-    setBattleLog([
-      `Battle start! Your ${selectedCard.name} vs ${opponentCard.name}`,
-      `Your HP: ${playerMaxHP} | Opponent HP: ${opponentMaxHP}`
-    ]);
-    setTurnCount(0);
-    setDamageNumbers([]);
-    setWinner(null);
-    setReward(0);
-    setPlayerAbilityTriggered(false);
-    setOpponentAbilityTriggered(false);
-    setPredictedMove(null);
-    setOpponentMovePreview(null);
-    setPlayerStatAllocation(null);
-    setOpponentStatAllocation(null);
-    setPlayerBuffs({});
-    setOpponentBuffs({});
-    setFocusBonus(0);
-    setOpponentFocusBonus(0);
-    setMoveCooldowns({});
-    setPlayerMove(null);
-    setOpponentMove(null);
-  };
-
-  // Choose opponent move based on AI logic
-  const chooseOpponentMove = () => {
-    const stats = {
-      power: opponentCard.stats.power + (opponentBuffs.power || 0) + (opponentStatAllocation?.power || 0),
-      speed: opponentCard.stats.speed + (opponentBuffs.speed || 0) + (opponentStatAllocation?.speed || 0),
-      intelligence: opponentCard.stats.intelligence + (opponentBuffs.intelligence || 0) + (opponentStatAllocation?.intelligence || 0),
-      creativity: opponentCard.stats.creativity + (opponentBuffs.creativity || 0) + (opponentStatAllocation?.creativity || 0)
-    };
-
-    const availableMoves = Object.keys(MOVES).filter(move => {
-      if (moveCooldowns[move] && moveCooldowns[move] > 0) return false;
-      const moveData = MOVES[move.toUpperCase()];
-      return opponentEnergy >= moveData.energyCost;
-    });
-
-    if (availableMoves.length === 0) return null; // Should not happen
-
-    // Weighted selection based on stats and situation
-    const weights = availableMoves.map(move => {
-      const moveData = MOVES[move.toUpperCase()];
-      let weight = 1;
-
-      // Check if we can kill with a strike
-      if (move === 'strike' && playerHP <= stats.power * moveData.damageFactor * 1.5) {
-        weight += 3;
-      }
-
-      // If low HP, consider blocking
-      if (opponentHP < calculateHP(opponentCard) * 0.3 && move === 'block') {
-        weight += 2;
-      }
-
-      // If opponent likely to strike, block
-      if (playerBuffs.focus && move === 'block') {
-        weight += 1.5;
-      }
-
-      // Stat biases
-      if (move === 'strike') weight += stats.power / 50;
-      if (move === 'focus') weight += stats.intelligence / 50;
-      if (move === 'blitz') weight += stats.creativity / 50;
-      if (move === 'block') weight += stats.speed / 50;
-
-      return weight;
-    });
-
-    // Roulette wheel selection
-    const totalWeight = weights.reduce((a, b) => a + b, 0);
-    let random = Math.random() * totalWeight;
-    for (let i = 0; i < availableMoves.length; i++) {
-      random -= weights[i];
-      if (random <= 0) return availableMoves[i];
-    }
-    return availableMoves[0];
-  };
-
-  // Trigger provider abilities
-  const triggerPlayerAbility = (currentMove) => {
-    const provider = PROVIDERS[selectedCard.provider];
-    const ability = provider.ability;
-
-    switch (ability.name) {
-      case 'Analytical Precision':
-        // 30% chance to reveal opponent's next move and gain +20% damage on next strike
-        if (Math.random() < 0.3 && currentMove === 'focus') {
-          setOpponentMovePreview(opponentMove);
-          setPlayerBuffs(prev => ({ ...prev, analyticalPrecision: true }));
-          addLog(`✨ Analytical Precision triggered! Opponent will use ${opponentMove}. Your next Strike gains +20% damage.`);
-          return true;
-        }
-        break;
-
-      case 'Adaptive Learning':
-        // At battle start and every 3 turns, randomly boost one stat by 10%
-        if (turnCount === 0 || turnCount % 3 === 0) {
-          const stats = ['power', 'speed', 'intelligence', 'creativity'];
-          const boostedStat = stats[Math.floor(Math.random() * stats.length)];
-          setPlayerBuffs(prev => ({ ...prev, [boostedStat]: (prev[boostedStat] || 0) + 0.1 }));
-          addLog(`🧠 Adaptive Learning triggered! ${boostedStat.charAt(0).toUpperCase() + boostedStat.slice(1)} increased by 10%.`);
-          return true;
-        }
-        break;
-
-      case 'Versatile Tactician':
-        // Can switch stat allocation once per battle
-        if (!playerStatAllocation && turnCount > 0) {
-          // Just a placeholder - in a full UI we'd let player choose
-          // For now, auto-boost the stat matching their chosen move
-          const move = MOVES[currentMove.toUpperCase()];
-          if (move) {
-            setPlayerStatAllocation({ [move.stat]: 0.15 }); // +15% to relevant stat
-            addLog(`🦙 Versatile Tactician: Stat allocation shifted to ${move.stat}!`);
-            return true;
-          }
-        }
-        break;
-
-      case 'Efficient Operations':
-        // Moves have cooldown of 1 turn, handled in cooldown system
-        // We set cooldown after move execution
-        break;
-
-      case 'Multimodal Mastery':
-        // Can use any stat for any move; damage penalty already handled in damage calc implicitly by using actual stats
-        // Nothing extra to trigger
-        break;
-
-      case 'Precognitive Analysis':
-        // 25% chance to predict opponent's move
-        if (Math.random() < 0.25) {
-          setPredictedMove(opponentMove);
-          addLog(`🔮 Precognitive Analysis: Predicted ${opponentMove}!`);
-          return true;
-        }
-        break;
-    }
-
-    return false;
-  };
-
-  const triggerOpponentAbility = (currentMove) => {
-    const provider = PROVIDERS[opponentCard.provider];
-    const ability = provider.ability;
-
-    switch (ability.name) {
-      case 'Analytical Precision':
-        if (Math.random() < 0.3 && currentMove === 'focus') {
-          setPlayerMovePreview(playerMove); // Would show preview to player
-          setOpponentBuffs(prev => ({ ...prev, analyticalPrecision: true }));
-          addLog(`Opponent's Analytical Precision reveals your move!`);
-          return true;
-        }
-        break;
-
-      case 'Adaptive Learning':
-        if (turnCount === 0 || turnCount % 3 === 0) {
-          const stats = ['power', 'speed', 'intelligence', 'creativity'];
-          const boostedStat = stats[Math.floor(Math.random() * stats.length)];
-          setOpponentBuffs(prev => ({ ...prev, [boostedStat]: (prev[boostedStat] || 0) + 0.1 }));
-          addLog(`Opponent's Adaptive Learning boosted ${boostedStat}!`);
-          return true;
-        }
-        break;
-
-      case 'Versatile Tactician':
-        if (!opponentStatAllocation && turnCount > 0) {
-          const move = MOVES[currentMove.toUpperCase()];
-          if (move) {
-            setOpponentStatAllocation({ [move.stat]: 0.15 });
-            addLog(`Opponent's Versatile Tactician shifted stats!`);
-            return true;
-          }
-        }
-        break;
-
-      case 'Efficient Operations':
-        // Cooldown handling
-        break;
-
-      case 'Multimodal Mastery':
-        // Uses appropriate stat for move - handled in damage calc
-        break;
-
-      case 'Precognitive Analysis':
-        if (Math.random() < 0.25) {
-          setPredictedMove(playerMove);
-          addLog(`Opponent predicted your move!`);
-          return true;
-        }
-        break;
-    }
-
-    return false;
-  };
-
-  const calculateDamage = (attacker, defender, move, isPlayer) => {
-    const moveData = MOVES[move.toUpperCase()];
-    if (!moveData) return 0;
-
-    // Get attacker stats with buffs and allocation
-    let stats = { ...attacker.stats };
-    if (isPlayer) {
-      if (playerBuffs.power) stats.power *= (1 + playerBuffs.power);
-      if (playerBuffs.speed) stats.speed *= (1 + playerBuffs.speed);
-      if (playerBuffs.intelligence) stats.intelligence *= (1 + playerBuffs.intelligence);
-      if (playerBuffs.creativity) stats.creativity *= (1 + playerBuffs.creativity);
-      if (playerStatAllocation) {
-        Object.keys(playerStatAllocation).forEach(stat => {
-          stats[stat] *= (1 + playerStatAllocation[stat]);
-        });
-      }
-    } else {
-      if (opponentBuffs.power) stats.power *= (1 + opponentBuffs.power);
-      if (opponentBuffs.speed) stats.speed *= (1 + opponentBuffs.speed);
-      if (opponentBuffs.intelligence) stats.intelligence *= (1 + opponentBuffs.intelligence);
-      if (opponentBuffs.creativity) stats.creativity *= (1 + opponentBuffs.creativity);
-      if (opponentStatAllocation) {
-        Object.keys(opponentStatAllocation).forEach(stat => {
-          stats[stat] *= (1 + opponentStatAllocation[stat]);
-        });
-      }
-    }
-
-    // Determine effective stat based on move type
-    let effectiveStat = stats[moveData.stat];
-
-    // Multimodal Mastery: can use any stat
-    if (isPlayer && selectedCard.provider === 'GEMINI') {
-      // Use highest stat
-      effectiveStat = Math.max(stats.power, stats.speed, stats.intelligence, stats.creativity);
-    }
-    if (!isPlayer && opponentCard.provider === 'GEMINI') {
-      effectiveStat = Math.max(stats.power, stats.speed, stats.intelligence, stats.creativity);
-    }
-
-    // Base damage
-    let damage = effectiveStat * moveData.damageFactor;
-
-    // Focus bonus
-    if (isPlayer && move === 'strike' && focusBonus > 0) {
-      damage *= (1 + focusBonus);
-    }
-    if (!isPlayer && move === 'strike' && opponentFocusBonus > 0) {
-      damage *= (1 + opponentFocusBonus);
-    }
-
-    // Analytical Precision +20% bonus
-    if (isPlayer && playerBuffs.analyticalPrecision && move === 'strike') {
-      damage *= 1.2;
-      setPlayerBuffs(prev => {
-        const { analyticalPrecision, ...rest } = prev;
-        return rest;
-      });
-    }
-    if (!isPlayer && opponentBuffs.analyticalPrecision && move === 'strike') {
-      damage *= 1.2;
-      setOpponentBuffs(prev => {
-        const { analyticalPrecision, ...rest } = prev;
-        return rest;
-      });
-    }
-
-    // Apply defense penetration (Blitz)
-    let defenseReduction = 0;
-    if (moveData.defensePenetration) {
-      defenseReduction = moveData.defensePenetration;
-    }
-
-    // Opponent's defensive capability based on stats (defense = average of speed + other stats / 2)
-    const defenderDefense = (defender.stats.speed + (defender.stats.intelligence + defender.stats.creativity) / 2) / 3;
-
-    // Reduce damage by defense
-    let finalDamage = damage * (1 - defenseReduction) * (1 - defenderDefense / 200);
-
-    // Cap minimum damage
-    finalDamage = Math.max(5, Math.floor(finalDamage));
-
-    return finalDamage;
-  };
-
-  const addLog = (message) => {
-    setBattleLog(prev => [...prev, message]);
-  };
-
-  const spawnDamageNumber = (value, isPlayer) => {
-    const id = Date.now() + Math.random();
-    setDamageNumbers(prev => [...prev, { id, value, isPlayer }]);
-    setTimeout(() => {
-      setDamageNumbers(prev => prev.filter(dn => dn.id !== id));
-    }, 1000);
-  };
-
-  const handlePlayerMove = (move) => {
-    if (battleState !== 'battling') return;
-    const moveData = MOVES[move.toUpperCase()];
-    if (playerEnergy < moveData.energyCost) return;
-
-    setPlayerMove(move);
-    setPlayerEnergy(prev => prev - moveData.energyCost);
-  };
-
-  const resolveTurn = () => {
-    if (!playerMove || !opponentMove) return;
-
-    setTurnCount(prev => prev + 1);
-    addLog(`Turn ${turnCount + 1}: You used ${playerMove.toUpperCase()}, opponent used ${opponentMove.toUpperCase()}`);
-
-    // Check for DeepSeek prediction bonuses
-    let playerDamageBonus = 1;
-    let opponentDamageBonus = 1;
-    let ignorePlayerDefense = false;
-    let ignoreOpponentDefense = false;
-
-    if (predictedMove) {
-      if (predictedMove === playerMove && opponentCard.provider === 'DEEPSEEK') {
-        // Opponent predicted you
-        opponentDamageBonus = 1.2;
-        addLog('DeepSeek precognition: opponent attacks with +20% damage!');
-      } else if (predictedMove === opponentMove && selectedCard.provider === 'DEEPSEEK') {
-        // You predicted opponent
-        playerDamageBonus = 1.2;
-        addLog('Your DeepSeek precognition: your attack gains +20% damage!');
-      }
-    }
-
-    // Calculate damage
-    let playerDamage = calculateDamage(selectedCard, opponentCard, playerMove, true) * playerDamageBonus;
-    let opponentDamage = calculateDamage(opponentCard, selectedCard, opponentMove, false) * opponentDamageBonus;
-
-    // Apply DeepSeek defense ignore if opponent used attack move and you predicted it
-    if (predictedMove && predictedMove === opponentMove && selectedCard.provider === 'DEEPSEEK') {
-      ignoreOpponentDefense = true;
-      opponentDamage *= 0.7; // Reduced because defense ignore means we dodged?
-    }
-
-    // Apply Block reduction (70% reduction)
-    let actualOpponentDamage = opponentDamage;
-    if (opponentMove === 'block') {
-      actualOpponentDamage *= 0.3;
-      addLog('Opponent blocked! Damage reduced by 70%.');
-    }
-
-    let actualPlayerDamage = playerDamage;
-    if (playerMove === 'block') {
-      actualPlayerDamage *= 0.3;
-      addLog('You blocked! Damage reduced by 70%.');
-    }
-
-    // Apply damage
-    setOpponentHP(prev => Math.max(0, prev - actualPlayerDamage));
-    setPlayerHP(prev => Math.max(0, prev - actualOpponentDamage));
-
-    spawnDamageNumber(Math.floor(actualPlayerDamage), true);
-    spawnDamageNumber(Math.floor(actualOpponentDamage), false);
-
-    // Focus accumulation
-    if (playerMove === 'focus') {
-      setFocusBonus(prev => Math.min(1, prev + 0.2)); // +20% per focus, max 100%
-      addLog(`Focus charged! Next Strike will deal +${Math.round(focusBonus * 100)}% damage.`);
-    } else if (playerMove === 'strike') {
-      setFocusBonus(0); // Reset on strike
-    }
-
-    if (opponentMove === 'focus') {
-      setOpponentFocusBonus(prev => Math.min(1, prev + 0.2));
-    } else if (opponentMove === 'strike') {
-      setOpponentFocusBonus(0);
-    }
-
-    // Mistral cooldown system
-    if (selectedCard.provider === 'MISTRAL') {
-      setMoveCooldowns(prev => ({ ...prev, [playerMove]: 1 }));
-    }
-    if (opponentCard.provider === 'MISTRAL') {
-      setMoveCooldowns(prev => ({ ...prev, [opponentMove]: 1 }));
-    }
-
-    // Check win condition
-    if (opponentHP <= 0) {
-      setWinner('player');
-      const earned = 200 + turnCount * 50; // Base + turn bonus
-      setReward(earned);
-      if (user?.id) api.recordBattleResult(user.id, 'win', turnCount, null).catch(() => {});
-      addLog(`🎉 Victory! You earned ${earned} credits!`);
-    } else if (playerHP <= 0) {
-      setWinner('opponent');
-      const consolation = 50;
-      setReward(consolation);
-      if (user?.id) api.recordBattleResult(user.id, 'loss', turnCount, null).catch(() => {});
-      addLog(`💀 Defeat! You earned ${consolation} credits.`);
-    } else {
-      addLog(`HP: You ${Math.ceil(playerHP)} | Opponent ${Math.ceil(opponentHP)}`);
-    }
-
-    setPlayerMove(null);
-    setOpponentMove(null);
-    setPredictedMove(null);
-    setOpponentMovePreview(null);
-
-    // Decrement cooldowns
-    setMoveCooldowns(prev => {
-      const next = {};
-      Object.keys(prev).forEach(key => {
-        if (prev[key] > 0) next[key] = prev[key] - 1;
-      });
-      return next;
-    });
-  };
-
-  // Auto-opponent thinking and move selection
-  useEffect(() => {
-    if (battleState === 'battling' && playerMove && !opponentMove) {
-      const timer = setTimeout(() => {
-        const move = chooseOpponentMove();
-        if (move) {
-          setOpponentMove(move);
-          triggerOpponentAbility(move);
-
-          // Deduct opponent energy
-          const moveData = MOVES[move.toUpperCase()];
-          setOpponentEnergy(prev => Math.max(0, prev - moveData.energyCost));
-        }
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [playerMove, opponentMove, battleState]);
-
-  // Auto-resolve when both moves are selected
-  useEffect(() => {
-    if (playerMove && opponentMove) {
-      resolveTurn();
-    }
-  }, [playerMove, opponentMove]);
-
-  // Energy regeneration each turn
-  useEffect(() => {
-    if (battleState === 'battling' && !playerMove && !opponentMove && turnCount > 0) {
-      const regenTimer = setTimeout(() => {
-        setPlayerEnergy(prev => Math.min(100, prev + 25));
-        setOpponentEnergy(prev => Math.min(100, prev + 25));
-        addLog('Energy regenerated +25⚡');
-      }, 1500);
-      return () => clearTimeout(regenTimer);
-    }
-  }, [turnCount, playerMove, opponentMove, battleState]);
-
-  const handlePlayerAbilityCheck = (currentMove) => {
-    const triggered = triggerPlayerAbility(currentMove);
-    setPlayerAbilityTriggered(triggered);
-  };
-
-  const getMoveColor = (move) => {
-    switch (move) {
-      case 'strike': return 'from-red-500 to-orange-500';
-      case 'block': return 'from-blue-500 to-cyan-500';
-      case 'focus': return 'from-purple-500 to-pink-500';
-      case 'blitz': return 'from-yellow-500 to-amber-500';
-      default: return 'from-gray-500 to-gray-600';
-    }
-  };
-
-  const getEnergyColor = (energy) => {
-    if (energy > 50) return 'bg-green-500';
-    if (energy > 25) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
-
-  const providerImage = (provider) => PROVIDERS[provider]?.image || null;
-  const providerAbility = (provider) => PROVIDERS[provider]?.ability || null;
-
-  const selectOpponent = (card) => {
-    // Select opponent from collection (for testing, pick random card of same or lower rarity)
-    const eligible = collection.filter(c => c.id !== selectedCard.id);
-    if (eligible.length === 0) {
-      alert('You need more cards in your collection to battle!');
-      return;
-    }
-    setOpponentCard(card);
-    initializeBattle();
-  };
-
-  const handleBattleComplete = () => {
-    onXpGain(winner === 'player' ? 75 : 10);
-    onComplete(reward);
-    onBack();
-  };
+function buildOpponent(playerCard, difficulty) {
+  const playerRarityVal = RARITY_ORDER[playerCard.rarity] || 1;
+  let allowedVals;
+  if (difficulty.id === 'easy')   allowedVals = [1, 2];
+  else if (difficulty.id === 'normal') allowedVals = [Math.max(1,playerRarityVal-1), playerRarityVal, playerRarityVal+1];
+  else if (difficulty.id === 'hard')  allowedVals = [playerRarityVal, playerRarityVal+1];
+  else allowedVals = [playerRarityVal+1, playerRarityVal+2, playerRarityVal];
+
+  const eligible = CARD_POOL.filter(c => c.id !== playerCard.id && allowedVals.some(v => RARITY_ORDER[c.rarity] === v));
+  const pool = eligible.length > 0 ? eligible : CARD_POOL.filter(c => c.id !== playerCard.id);
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  return { ...base, id: `opp-${base.id}` };
+}
+
+function StatBar({ label, value, max, color }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-20 text-xs text-gray-400 shrink-0">{label}</span>
+      <div className="flex-1 h-2 bg-gray-700/60 rounded-full overflow-hidden">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: color }}
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.max(0, (value / max) * 100)}%` }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        />
+      </div>
+      <span className="w-10 text-right text-xs font-bold text-white">{Math.ceil(value)}</span>
+    </div>
+  );
+}
+
+function FighterPanel({ card, hp, maxHp, energy, buffs, focusStacks, isPlayer, typeMatchup, selectedMove, waiting }) {
+  const color = PROVIDERS[card.provider]?.color || '#6b7280';
+  const hpPct = Math.max(0, (hp / maxHp) * 100);
+  const hpColor = hpPct > 50 ? '#22c55e' : hpPct > 25 ? '#f59e0b' : '#ef4444';
 
   return (
-    <div className="min-h-screen p-6">
+    <div className={`rounded-2xl border p-4 backdrop-blur relative overflow-hidden ${isPlayer ? 'border-blue-500/40 bg-blue-950/30' : 'border-red-500/40 bg-red-950/30'}`}>
+      <div className="absolute inset-0 opacity-10 pointer-events-none"
+        style={{ background: `radial-gradient(ellipse at ${isPlayer ? 'bottom right' : 'top left'}, ${color}, transparent 70%)` }} />
+      <div className="relative z-10">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl shrink-0"
+            style={{ background: `${color}22`, border: `2px solid ${color}44` }}>
+            {card.providerInfo?.icon || card.provider}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold truncate">{card.name}</div>
+            <div className="text-xs text-gray-400">{card.rarity} · v{card.version}</div>
+            {typeMatchup && (
+              <div className="mt-1 text-xs font-bold" style={{ color: typeMatchup.color }}>
+                {typeMatchup.emoji} {typeMatchup.label}
+              </div>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-xl font-black" style={{ color: hpColor }}>{Math.ceil(hp)}</div>
+            <div className="text-xs text-gray-500">/ {maxHp} HP</div>
+          </div>
+        </div>
+        <StatBar label="HP" value={hp} max={maxHp} color={hpColor} />
+        <div className="mt-1"><StatBar label="⚡ Energy" value={energy} max={100} color="#f59e0b" /></div>
+        <div className="flex flex-wrap gap-1 mt-2 min-h-[20px]">
+          {focusStacks > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-purple-900/60 text-purple-300 border border-purple-600/40">
+              🔮 Focus ×{focusStacks} (+{focusStacks * 20}% Strike)
+            </span>
+          )}
+          {buffs?.power > 0 && <span className="px-2 py-0.5 rounded-full text-xs bg-red-900/60 text-red-300">💥 +{Math.round(buffs.power * 100)}% Atk</span>}
+          {buffs?.speed > 0 && <span className="px-2 py-0.5 rounded-full text-xs bg-cyan-900/60 text-cyan-300">⚡ +{Math.round(buffs.speed * 100)}% Spd</span>}
+        </div>
+        {(selectedMove || waiting) && (
+          <div className="mt-2 text-xs font-bold text-center py-1 rounded-lg bg-black/30">
+            {selectedMove ? `▶ ${selectedMove.toUpperCase()}` : '⌛ Thinking…'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => {} }) {
+  const [phase, setPhase] = useState('pick-card');
+  const [collection, setCollection] = useState([]);
+  const [playerCard, setPlayerCard] = useState(null);
+  const [opponentCard, setOpponentCard] = useState(null);
+  const [difficulty, setDifficulty] = useState(DIFFICULTY_TIERS[1]);
+
+  // Battle state — use refs for values needed inside closures
+  const [playerHp, setPlayerHp]         = useState(0);
+  const [opponentHp, setOpponentHp]     = useState(0);
+  const [maxPlayerHp, setMaxPlayerHp]   = useState(0);
+  const [maxOpponentHp, setMaxOpponentHp] = useState(0);
+  const [playerEnergy, setPlayerEnergy]     = useState(100);
+  const [opponentEnergy, setOpponentEnergy] = useState(100);
+  const [playerFocus, setPlayerFocus]   = useState(0);
+  const [opponentFocus, setOpponentFocus] = useState(0);
+  const [playerBuffs, setPlayerBuffs]   = useState({});
+  const [opponentBuffs, setOpponentBuffs] = useState({});
+  const [playerMove, setPlayerMove]     = useState(null);
+  const [opponentMove, setOpponentMove] = useState(null);
+  const [turn, setTurn]                 = useState(0);
+  const maxTurns = 20;
+  const [log, setLog]         = useState([]);
+  const [winner, setWinner]   = useState(null);
+  const [reward, setReward]   = useState(0);
+  const [floats, setFloats]   = useState([]);
+  const [shakeSide, setShakeSide]   = useState(null);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [mistralCooldowns, setMistralCooldowns] = useState({});
+  const logRef = useRef(null);
+
+  // Refs to expose latest state inside closures without captures
+  const stateRef = useRef({});
+  useEffect(() => {
+    stateRef.current = {
+      playerHp, opponentHp, playerEnergy, opponentEnergy,
+      playerFocus, opponentFocus, playerBuffs, opponentBuffs,
+      mistralCooldowns, turn, playerCard, opponentCard, difficulty,
+    };
+  });
+
+  useEffect(() => {
+    if (!user) return;
+    const key = typeof user === 'string' ? user : (user.id || user.username);
+    const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
+    const seen = new Set();
+    const deduped = saved.filter(c => {
+      const k = `${c.baseId || c.id}-${c.rarity}`;
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    }).sort((a, b) => (RARITY_ORDER[b.rarity] || 0) - (RARITY_ORDER[a.rarity] || 0));
+    setCollection(deduped);
+  }, [user]);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [log]);
+
+  function addLogs(...msgs) {
+    setLog(prev => [...prev, ...msgs.filter(Boolean)]);
+  }
+
+  function spawnFloat(value, side) {
+    const id = Date.now() + Math.random();
+    setFloats(prev => [...prev, { id, value, side }]);
+    setTimeout(() => setFloats(prev => prev.filter(f => f.id !== id)), 1200);
+  }
+
+  function shakeCard(side) {
+    setShakeSide(side);
+    setTimeout(() => setShakeSide(null), 420);
+  }
+
+  function startBattle() {
+    if (!playerCard) return;
+    const opp = buildOpponent(playerCard, difficulty);
+    setOpponentCard(opp);
+    const pHp = calculateHP(playerCard);
+    const oHp = calculateHP(opp);
+    setPlayerHp(pHp); setMaxPlayerHp(pHp);
+    setOpponentHp(oHp); setMaxOpponentHp(oHp);
+    setPlayerEnergy(100); setOpponentEnergy(100);
+    setPlayerFocus(0); setOpponentFocus(0);
+    setPlayerBuffs({}); setOpponentBuffs({});
+    setPlayerMove(null); setOpponentMove(null);
+    setWinner(null); setReward(0);
+    setTurn(0); setFloats([]); setMistralCooldowns({});
+    const mult = getTypeMatchupText(playerCard.provider, opp.provider);
+    const dmgPct = Math.round(getTypeMultiplier(playerCard.provider, opp.provider) * 100);
+    setLog([
+      `⚔️  ${playerCard.name} VS ${opp.name}  [${difficulty.label}]`,
+      `${mult.emoji} Type matchup: ${mult.label} — your attacks deal ${dmgPct}% damage`,
+    ]);
+    setPhase('battle');
+  }
+
+  function calcDamage(attacker, defender, mv, aBuffs, aFocus) {
+    const moveData = Object.values(MOVES).find(m => m.id === mv);
+    if (!moveData || moveData.damageFactor === 0) return 0;
+
+    let stat = attacker.stats?.[moveData.stat] ?? 80;
+    const buffMult = 1 + ((aBuffs[moveData.stat] || 0) + (aBuffs.analyticalBonus || 0));
+    stat *= buffMult;
+
+    // Gemini: use best stat for all moves
+    if (attacker.provider === 'GEMINI') {
+      const best = Math.max(...Object.values(attacker.stats));
+      stat = best * buffMult;
+    }
+
+    let dmg = stat * moveData.damageFactor;
+
+    // Focus stacks: +20% per stack on Strike
+    if (mv === 'strike' && aFocus > 0) dmg *= (1 + aFocus * 0.2);
+
+    // Type effectiveness
+    dmg *= getTypeMultiplier(attacker.provider, defender.provider);
+
+    // Defense mitigation (penetrated partially by blitz)
+    const defPen = moveData.defensePenetration || 0;
+    const defStat = ((defender.stats?.speed || 80) + (defender.stats?.intelligence || 80)) / 2;
+    const defense = (defStat / 200) * (1 - defPen);
+    dmg = dmg * (1 - defense);
+
+    return Math.max(4, Math.floor(dmg));
+  }
+
+  function pickAiMove(oCard, oEnergy, oFocus, oBuffs, cooldowns) {
+    const intel = difficulty.aiIntelligence;
+    const available = Object.values(MOVES)
+      .filter(m => oEnergy >= m.energyCost && !cooldowns[m.id])
+      .map(m => m.id);
+    if (available.length === 0) return 'block';
+    if (Math.random() > intel) return available[Math.floor(Math.random() * available.length)];
+    const s = stateRef.current;
+    const oPct = s.opponentHp / calculateHP(oCard);
+    const scores = {};
+    for (const mv of available) {
+      let score = 1;
+      if (mv === 'strike') { score += 2; if (oFocus > 0) score += 2; if (oPct < 0.4) score += 3; }
+      if (mv === 'block')  { score += (oPct < 0.3 ? 3 : -0.5); }
+      if (mv === 'focus')  { score += (oFocus < 3 && oPct > 0.5 ? 1.5 : -1); }
+      if (mv === 'blitz')  { score += 1 + (oPct < 0.6 ? 1 : 0); }
+      scores[mv] = Math.max(0.1, score + Math.random() * 0.5);
+    }
+    return Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  }
+
+  // Central resolve — reads all state from stateRef to avoid stale closures
+  function resolveTurn(pMove, oMove) {
+    const s = stateRef.current;
+    let pHp = s.playerHp, oHp = s.opponentHp;
+    let pEn = s.playerEnergy, oEn = s.opponentEnergy;
+    let pFocus = s.playerFocus, oFocus = s.opponentFocus;
+    let pBuf = { ...s.playerBuffs }, oBuf = { ...s.opponentBuffs };
+    const pCard = s.playerCard, oCard = s.opponentCard;
+    const newTurn = s.turn + 1;
+    const cooldowns = { ...s.mistralCooldowns };
+    Object.keys(cooldowns).forEach(k => { if (--cooldowns[k] <= 0) delete cooldowns[k]; });
+
+    const msgs = [`Turn ${newTurn}: You → ${pMove.toUpperCase()} | AI → ${oMove.toUpperCase()}`];
+
+    let pDmg = (pMove !== 'block' && pMove !== 'focus') ? calcDamage(pCard, oCard, pMove, pBuf, pFocus) : 0;
+    let oDmg = (oMove !== 'block' && oMove !== 'focus') ? calcDamage(oCard, pCard, oMove, oBuf, oFocus) : 0;
+
+    // Type matchup annotation
+    if (pDmg > 0) {
+      const mult = getTypeMultiplier(pCard.provider, oCard.provider);
+      if (mult >= 1.25) msgs.push('🔥 Super Effective!');
+      else if (mult <= 0.76) msgs.push('❌ Not Very Effective…');
+    }
+
+    // Block: receive 30% of damage
+    if (pMove === 'block') { oDmg = Math.floor(oDmg * 0.3); msgs.push('🛡️ You braced!'); }
+    if (oMove === 'block') { pDmg = Math.floor(pDmg * 0.3); msgs.push(`🛡️ ${oCard.name} blocked!`); }
+
+    // DeepSeek prediction
+    if (pCard.provider === 'DEEPSEEK' && Math.random() < 0.25 && (oMove === 'strike' || oMove === 'blitz')) {
+      pDmg = Math.floor(pDmg * 1.2); msgs.push('🔮 DeepSeek precognition! +20% counter');
+    }
+    if (oCard.provider === 'DEEPSEEK' && Math.random() < 0.25 && (pMove === 'strike' || pMove === 'blitz')) {
+      oDmg = Math.floor(oDmg * 1.2); msgs.push('🔮 Opponent predicted your move!');
+    }
+
+    // Claude analytical bonus on Focus
+    if (pCard.provider === 'CLAUDE' && pMove === 'focus' && Math.random() < 0.3) {
+      pBuf = { ...pBuf, analyticalBonus: (pBuf.analyticalBonus || 0) + 0.2 };
+      msgs.push('🧠 Analytical Precision activated! Next strike +20%');
+    }
+    if (oCard.provider === 'CLAUDE' && oMove === 'focus' && Math.random() < 0.3) {
+      oBuf = { ...oBuf, analyticalBonus: (oBuf.analyticalBonus || 0) + 0.2 };
+    }
+    // Consume analytical bonus on strike
+    if (pMove === 'strike' && pBuf.analyticalBonus) { pDmg = Math.floor(pDmg * (1 + pBuf.analyticalBonus)); delete pBuf.analyticalBonus; }
+    if (oMove === 'strike' && oBuf.analyticalBonus) { oDmg = Math.floor(oDmg * (1 + oBuf.analyticalBonus)); delete oBuf.analyticalBonus; }
+
+    // Focus stack management
+    if (pMove === 'focus') { pFocus = Math.min(4, pFocus + 1); msgs.push(`🔮 Focus ×${pFocus} charged!`); }
+    else if (pMove === 'strike') pFocus = 0;
+    if (oMove === 'focus') oFocus = Math.min(4, oFocus + 1);
+    else if (oMove === 'strike') oFocus = 0;
+
+    // Mistral cooldowns (non-block moves go on 1-turn lockout)
+    if (pCard.provider === 'MISTRAL' && pMove !== 'block') cooldowns[pMove] = 1;
+    if (oCard.provider === 'MISTRAL' && oMove !== 'block') cooldowns[oMove] = 1;
+
+    // Apply HP
+    oHp = Math.max(0, oHp - pDmg);
+    pHp = Math.max(0, pHp - oDmg);
+    if (pDmg > 0) { msgs.push(`💥 You dealt ${pDmg} dmg`); spawnFloat(pDmg, 'opponent'); shakeCard('opponent'); }
+    if (oDmg > 0) { msgs.push(`💢 You took ${oDmg} dmg`); spawnFloat(oDmg, 'player'); shakeCard('player'); }
+    msgs.push(`❤️ You: ${Math.ceil(pHp)} | ${oCard.name}: ${Math.ceil(oHp)}`);
+
+    // GPT adaptive buff every 3 turns
+    if (newTurn % 3 === 0) {
+      const stats = ['power','speed','intelligence','creativity'];
+      const st = stats[Math.floor(Math.random() * stats.length)];
+      if (pCard.provider === 'GPT') { pBuf = { ...pBuf, [st]: (pBuf[st]||0) + 0.1 }; msgs.push(`🧠 GPT learns! +10% ${st}`); }
+      if (oCard.provider === 'GPT') { oBuf = { ...oBuf, [st]: (oBuf[st]||0) + 0.1 }; }
+    }
+
+    // Llama versatile swap at turn 2
+    if (newTurn === 2) {
+      if (pCard.provider === 'LLAMA' && !pBuf.llamaSwapped) {
+        pBuf = { ...pBuf, power: (pBuf.power||0) + 0.15, llamaSwapped: true };
+        msgs.push('🦙 Llama Versatile Tactician: Power +15%!');
+      }
+      if (oCard.provider === 'LLAMA' && !oBuf.llamaSwapped) {
+        oBuf = { ...oBuf, power: (oBuf.power||0) + 0.15, llamaSwapped: true };
+      }
+    }
+
+    // Energy regen
+    const pMoveData = Object.values(MOVES).find(m => m.id === pMove);
+    const oMoveData = Object.values(MOVES).find(m => m.id === oMove);
+    pEn = Math.min(100, pEn - (pMoveData?.energyCost || 0) + 30);
+    oEn = Math.min(100, oEn - (oMoveData?.energyCost || 0) + 30);
+
+    // Win check
+    let win = null;
+    if (oHp <= 0 && pHp <= 0) win = 'draw';
+    else if (oHp <= 0) win = 'player';
+    else if (pHp <= 0) win = 'opponent';
+    else if (newTurn >= maxTurns) win = pHp > oHp ? 'player' : pHp < oHp ? 'opponent' : 'draw';
+
+    // Batch all state updates
+    setTurn(newTurn);
+    setPlayerHp(pHp); setOpponentHp(oHp);
+    setPlayerEnergy(Math.max(0, pEn)); setOpponentEnergy(Math.max(0, oEn));
+    setPlayerFocus(pFocus); setOpponentFocus(oFocus);
+    setPlayerBuffs(pBuf); setOpponentBuffs(oBuf);
+    setMistralCooldowns(cooldowns);
+    setPlayerMove(null); setOpponentMove(null);
+    setAiThinking(false);
+    addLogs(...msgs);
+
+    if (win) {
+      setWinner(win);
+      const base = win === 'player' ? 150 + newTurn * 30 : win === 'draw' ? 60 : 30;
+      const earned = Math.floor(base * difficulty.rewardMult);
+      setReward(earned);
+      if (user?.id) api.recordBattleResult(user.id, win === 'player' ? 'win' : 'loss', newTurn, null).catch(() => {});
+    }
+  }
+
+  function handlePlayerMove(mv) {
+    if (playerMove || winner) return;
+    const moveData = Object.values(MOVES).find(m => m.id === mv);
+    if (!moveData || playerEnergy < moveData.energyCost) return;
+    setPlayerMove(mv);
+  }
+
+  // AI responds after player picks
+  useEffect(() => {
+    if (!playerMove || opponentMove || !opponentCard || phase !== 'battle' || winner) return;
+    setAiThinking(true);
+    const t = setTimeout(() => {
+      const s = stateRef.current;
+      const mv = pickAiMove(s.opponentCard, s.opponentEnergy, s.opponentFocus, s.opponentBuffs, s.mistralCooldowns);
+      setOpponentMove(mv);
+    }, 600 + Math.random() * 400);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerMove]);
+
+  // Both moves set → resolve
+  useEffect(() => {
+    if (playerMove && opponentMove) {
+      const t = setTimeout(() => resolveTurn(playerMove, opponentMove), 80);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerMove, opponentMove]);
+
+  const typeMatchupPlayer   = playerCard && opponentCard ? getTypeMatchupText(playerCard.provider,   opponentCard.provider) : null;
+  const typeMatchupOpponent = playerCard && opponentCard ? getTypeMatchupText(opponentCard.provider, playerCard.provider)   : null;
+
+  return (
+    <div className="min-h-screen p-4 max-w-4xl mx-auto">
       {/* Header */}
-      <header className="max-w-4xl mx-auto flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-6">
         <motion.button
-          initial={{ x: -20, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
+          whileHover={{ x: -3 }}
           onClick={() => {
-            if (battleState === 'battling') {
-              if (confirm('Abort battle?')) onBack();
-            } else {
-              onBack();
-            }
+            if (phase === 'battle' && !winner && !window.confirm('Abandon battle?')) return;
+            onBack();
           }}
-          className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+          className="flex items-center gap-2 text-gray-300 hover:text-white"
         >
-          <ArrowLeft className="w-6 h-6" />
-          <span>Back</span>
+          <ArrowLeft className="w-5 h-5" /> Back
         </motion.button>
-
-        <motion.h1
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-2xl font-bold bg-gradient-to-r from-red-400 via-orange-400 to-yellow-400 bg-clip-text text-transparent"
-        >
-          Battle Arena
-        </motion.h1>
-
-        <div className="w-24" />
+        <h1 className="text-xl font-black bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent">
+          ⚔️ 1v1 Battle
+        </h1>
+        <div className="w-16" />
       </header>
 
-      {battleState === 'selecting' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="max-w-4xl mx-auto"
-        >
-          <h2 className="text-xl font-bold mb-4">Select Your Card</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-            {collection.slice(0, 9).map(card => (
-              <div
-                key={card.id}
-                onClick={() => setSelectedCard(card)}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  selectedCard?.id === card.id
-                    ? 'border-green-500 bg-green-900/30'
-                    : 'border-gray-700 bg-gray-900/60 hover:border-gray-600'
-                }`}
-              >
-                <div className="text-4xl mb-2">{card.providerInfo.icon}</div>
-                <div className="font-bold">{card.name}</div>
-                <div className="text-sm text-gray-400">{card.version}</div>
-                <div className="text-xs text-gray-500">{card.rarity}</div>
-              </div>
-            ))}
-          </div>
-
-          {selectedCard && (
-            <div className="mb-8">
-              <h3 className="text-lg font-bold mb-3">Select Opponent</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {collection.filter(c => c.id !== selectedCard.id).slice(0, 8).map(card => (
-                  <div
-                    key={card.id}
-                    onClick={() => selectOpponent(card)}
-                    className="p-4 rounded-xl border-2 border-gray-700 bg-gray-900/60 hover:border-red-500 hover:bg-red-900/20 cursor-pointer transition-all"
-                  >
-                    <div className="text-3xl mb-2">{card.providerInfo.icon}</div>
-                    <div className="font-bold">{card.name}</div>
-                    <div className="text-sm text-gray-400">{card.rarity}</div>
-                  </div>
-                ))}
-              </div>
+      {/* ── PICK CARD ─────────────────────────────────────────────────── */}
+      {phase === 'pick-card' && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <p className="text-gray-400 mb-4">Choose your fighter:</p>
+          {collection.length === 0 && (
+            <div className="text-center py-16 text-gray-500">
+              <div className="text-5xl mb-4">📭</div>
+              <div>Open some packs first to get cards!</div>
             </div>
           )}
-
-          {selectedCard && opponentCard && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
+            {collection.map(card => {
+              const selected = playerCard?.id === card.id;
+              const clr = PROVIDERS[card.provider]?.color || '#6b7280';
+              return (
+                <motion.div
+                  key={card.id}
+                  whileHover={{ scale: 1.03, y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setPlayerCard(card)}
+                  className={`p-3 rounded-xl border-2 cursor-pointer transition-colors ${selected ? 'border-blue-400 bg-blue-950/50' : 'border-gray-700/60 bg-gray-900/50 hover:border-gray-500'}`}
+                  style={selected ? { boxShadow: `0 0 20px ${clr}40` } : {}}
+                >
+                  <div className="text-3xl mb-2">{card.providerInfo?.icon || '🤖'}</div>
+                  <div className="font-bold text-sm truncate">{card.name}</div>
+                  <div className="text-xs text-gray-400">{card.rarity}</div>
+                  <div className="text-xs mt-0.5" style={{ color: RARITIES[card.rarity]?.color }}>{card.version}</div>
+                  <div className="mt-1 text-xs text-gray-500">HP {calculateHP(card)}</div>
+                </motion.div>
+              );
+            })}
+          </div>
+          {playerCard && (
             <motion.button
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={initializeBattle}
-              className="w-full py-4 bg-gradient-to-r from-green-600 to-teal-600 rounded-xl font-bold text-xl shadow-lg"
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+              onClick={() => setPhase('pick-difficulty')}
+              className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-blue-600 to-violet-600 shadow-lg"
             >
-              Start Battle!
+              Fight with {playerCard.name} <ChevronRight className="inline w-5 h-5" />
             </motion.button>
           )}
         </motion.div>
       )}
 
-      {battleState === 'battling' && (
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Opponent */}
-          <motion.div
-            initial={{ x: -50, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-3xl">
-                {opponentCard?.providerInfo.icon}
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-lg">{opponentCard?.name}</div>
-                <div className="text-sm text-gray-400">{opponentCard?.provider}</div>
-                {getProviderAbility(opponentCard?.provider) && (
-                  <div className="mt-2 p-2 rounded-lg bg-gradient-to-r from-yellow-900/40 to-yellow-900/20 border border-yellow-600/30">
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const ability = getProviderAbility(opponentCard?.provider);
-                        const Icon = getAbilityIcon(ability?.icon);
-                        return Icon ? <Icon className="w-4 h-4 text-yellow-400" /> : null;
-                      })()}
-                      <div>
-                        <div className="text-xs text-yellow-300 font-semibold uppercase tracking-wide">Opponent Ability</div>
-                        <div className="text-sm text-yellow-100 font-bold">{getProviderAbility(opponentCard?.provider)?.name}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-red-400">{Math.ceil(opponentHP)}</div>
-                <div className="text-sm text-gray-400">HP</div>
-              </div>
-            </div>
-
-            {/* Opponent Energy Bar */}
-            <div className="mb-2">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>Opponent Energy</span>
-                <span>{Math.ceil(opponentEnergy)}/100⚡</span>
-              </div>
-              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                <motion.div
-                  className={`h-full ${getEnergyColor(opponentEnergy)}`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${opponentEnergy}%` }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
-
-            {/* Opponent Move Preview */}
-            {opponentMovePreview && (
+      {/* ── PICK DIFFICULTY ──────────────────────────────────────────── */}
+      {phase === 'pick-difficulty' && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <button onClick={() => setPhase('pick-card')} className="text-sm text-gray-400 hover:text-white flex items-center gap-1 mb-6">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+          <h2 className="text-lg font-bold mb-4">Select Difficulty</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            {DIFFICULTY_TIERS.map(d => (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-4 p-3 bg-yellow-900/30 border border-yellow-500/50 rounded-xl text-center"
+                key={d.id}
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setDifficulty(d)}
+                className="p-5 rounded-2xl border-2 cursor-pointer transition-all"
+                style={{
+                  borderColor: difficulty.id === d.id ? d.color : '#374151',
+                  background: difficulty.id === d.id ? `${d.color}15` : 'rgba(17,24,39,0.7)',
+                  boxShadow: difficulty.id === d.id ? `0 0 20px ${d.color}30` : undefined,
+                }}
               >
-                <div className="text-yellow-400 text-sm font-bold">Claude predicts opponent will use:</div>
-                <div className="text-yellow-200 text-lg">{opponentMovePreview.toUpperCase()}</div>
-              </motion.div>
-            )}
-
-            {/* Opponent Active Effects */}
-            {(Object.keys(opponentBuffs).length > 0 || opponentFocusBonus > 0) && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {Object.entries(opponentBuffs).map(([buff, value]) => (
-                  <span key={buff} className="px-2 py-1 bg-purple-900/50 text-purple-200 text-xs rounded-full">
-                    {buff} +{Math.round(value * 100)}%
-                  </span>
-                ))}
-                {opponentFocusBonus > 0 && (
-                  <span className="px-2 py-1 bg-blue-900/50 text-blue-200 text-xs rounded-full">
-                    Focus +{Math.round(opponentFocusBonus * 100)}%
-                  </span>
-                )}
-                {moveCooldowns && Object.entries(moveCooldowns).filter(([_, cd]) => cd > 0).map(([move, cd]) => (
-                  <span key={move} className="px-2 py-1 bg-red-900/50 text-red-200 text-xs rounded-full">
-                    {move.toUpperCase()} {cd}t cooldown
-                  </span>
-                ))}
-              </div>
-            )}
-          </motion.div>
-
-          {/* VS */}
-          <div className="text-center text-3xl font-bold text-gray-500">⚔️</div>
-
-          {/* Player */}
-          <motion.div
-            initial={{ x: 50, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 flex items-center justify-center text-3xl">
-                {selectedCard?.providerInfo.icon}
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-lg">{selectedCard?.name}</div>
-                <div className="text-sm text-gray-400">{selectedCard?.provider}</div>
-                {getProviderAbility(selectedCard?.provider) && (
-                  <div className="mt-2 p-2 rounded-lg bg-gradient-to-r from-yellow-900/40 to-yellow-900/20 border border-yellow-600/30">
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const ability = getProviderAbility(selectedCard?.provider);
-                        const Icon = getAbilityIcon(ability?.icon);
-                        return Icon ? <Icon className="w-4 h-4 text-yellow-400" /> : null;
-                      })()}
-                      <div>
-                        <div className="text-xs text-yellow-300 font-semibold uppercase tracking-wide">Unique Ability</div>
-                        <div className="text-sm text-yellow-100 font-bold">{getProviderAbility(selectedCard?.provider)?.name}</div>
-                      </div>
-                    </div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm"
+                    style={{ background: d.color, color: '#000' }}>
+                    {DIFFICULTY_TIERS.indexOf(d) + 1}
                   </div>
-                )}
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-green-400">{Math.ceil(playerHP)}</div>
-                <div className="text-sm text-gray-400">HP</div>
-              </div>
-            </div>
-
-            {/* Player Energy Bar */}
-            <div className="mb-4">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>Your Energy</span>
-                <span>{Math.ceil(playerEnergy)}/100⚡</span>
-              </div>
-              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                <motion.div
-                  className={`h-full ${getEnergyColor(playerEnergy)}`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${playerEnergy}%` }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
-
-            {/* Player Active Effects */}
-            {(Object.keys(playerBuffs).length > 0 || focusBonus > 0) && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {Object.entries(playerBuffs).map(([buff, value]) => (
-                  <span key={buff} className="px-2 py-1 bg-purple-900/50 text-purple-200 text-xs rounded-full">
-                    {buff} +{Math.round(value * 100)}%
-                  </span>
-                ))}
-                {focusBonus > 0 && (
-                  <span className="px-2 py-1 bg-blue-900/50 text-blue-200 text-xs rounded-full">
-                    Focus +{Math.round(focusBonus * 100)}%
-                  </span>
-                )}
-                {moveCooldowns && Object.entries(moveCooldowns).filter(([_, cd]) => cd > 0).map(([move, cd]) => (
-                  <span key={move} className="px-2 py-1 bg-red-900/50 text-red-200 text-xs rounded-full">
-                    {move.toUpperCase()} {cd}t cooldown
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Move Buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              {Object.values(MOVES).map(move => {
-                const Icon = MOVE_ICONS[move.id];
-                const canAfford = playerEnergy >= move.energyCost;
-                const onCooldown = moveCooldowns[move.id] > 0;
-                const disabled = !canAfford || onCooldown || playerMove;
-
-                return (
-                  <motion.button
-                    key={move.id}
-                    whileHover={{ scale: disabled ? 1 : 1.02 }}
-                    whileTap={{ scale: disabled ? 1 : 0.98 }}
-                    onClick={() => handlePlayerMove(move.id)}
-                    disabled={disabled}
-                    className={`p-4 rounded-xl border-2 transition-all relative ${
-                      disabled
-                        ? 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'
-                        : `bg-gradient-to-r ${getMoveColor(move.id)} border-opacity-50 text-white`
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="w-6 h-6" />
-                      <div className="text-left">
-                        <div className="font-bold">{move.name}</div>
-                        <div className="text-xs opacity-80">{move.energyCost}⚡</div>
-                      </div>
-                    </div>
-                    {onCooldown && (
-                      <div className="absolute inset-0 bg-red-900/50 rounded-xl flex items-center justify-center">
-                        <span className="font-bold">Cooldown {moveCooldowns[move.id]}t</span>
-                      </div>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-
-            {/* Player Selected Move */}
-            {playerMove && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="mt-4 p-3 bg-blue-900/30 border border-blue-500/50 rounded-xl text-center"
-              >
-                <div className="text-blue-400 text-sm">You selected:</div>
-                <div className="text-blue-200 text-xl font-bold">{playerMove.toUpperCase()}</div>
+                  <span className="font-black text-lg" style={{ color: d.color }}>{d.label}</span>
+                </div>
+                <p className="text-sm text-gray-400">{d.description}</p>
+                <div className="mt-3 flex gap-3 text-xs text-gray-500">
+                  <span>💰 ×{d.rewardMult} credits</span>
+                  <span>⭐ ×{d.xpMult} XP</span>
+                </div>
               </motion.div>
-            )}
-          </motion.div>
-
-          {/* Battle Log */}
-          <div className="bg-gray-900/60 backdrop-blur rounded-2xl p-4 border border-gray-700/50 max-h-40 overflow-y-auto">
-            {battleLog.map((log, idx) => (
-              <div key={idx} className="text-sm text-gray-300 mb-1">{log}</div>
             ))}
           </div>
-
-          {/* Turn Counter */}
-          <div className="text-center text-gray-400 mb-4">
-            Turn {turnCount} / 15
-          </div>
-
-          {/* Ability Reference Panel */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-gray-900/60 backdrop-blur rounded-2xl p-4 border border-gray-700/50"
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={startBattle}
+            className="w-full py-4 rounded-xl font-bold text-lg shadow-lg text-black"
+            style={{ background: `linear-gradient(135deg, ${difficulty.color}, ${difficulty.color}cc)` }}
           >
-            <div className="text-center text-sm font-bold text-gray-300 mb-3">Provider Abilities Reference</div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {Object.entries(PROVIDERS).map(([key, provider]) => {
-                const ability = provider.ability;
-                const Icon = getAbilityIcon(ability.icon);
-                const color = getAbilityColor(key);
-                return (
-                  <div
-                    key={key}
-                    className="p-3 rounded-xl border border-gray-700 bg-gradient-to-br from-gray-800/50 to-gray-900/50"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-2xl">{provider.icon}</span>
-                      <div className="text-sm font-bold text-gray-200">{provider.name}</div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color }} />
-                      <div className="text-xs text-gray-300">
-                        <div className="font-semibold mb-1" style={{ color }}>{ability.name}</div>
-                        <div className="text-gray-400 leading-tight">{ability.description}</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Result */}
-      {battleState === 'battling' && winner && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-gray-900 rounded-2xl p-8 max-w-md w-full border border-gray-700 text-center"
-          >
-            {winner === 'player' ? (
-              <>
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="text-6xl mb-4">🏆</motion.div>
-                <h2 className="text-3xl font-bold text-green-400 mb-2">Victory!</h2>
-              </>
-            ) : (
-              <>
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="text-6xl mb-4">💀</motion.div>
-                <h2 className="text-3xl font-bold text-red-400 mb-2">Defeat</h2>
-              </>
-            )}
-
-            <p className="text-gray-300 mb-6">
-              {winner === 'player'
-                ? `You defeated ${opponentCard.name}!`
-                : `${opponentCard.name} was too strong...`
-              }
-            </p>
-
-            <div className="bg-gray-800/50 rounded-xl p-4 mb-6">
-              <div className="text-sm text-gray-400 mb-1">Reward</div>
-              <div className="text-3xl font-bold text-yellow-400">+{reward} credits</div>
-            </div>
-
-            <button
-              onClick={handleBattleComplete}
-              className="w-full py-3 bg-gradient-to-r from-green-600 to-teal-600 rounded-xl font-bold"
-            >
-              Continue
-            </button>
-          </motion.div>
+            ⚔️ Start Battle!
+          </motion.button>
         </motion.div>
       )}
 
-      {/* Damage Numbers Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
-        <AnimatePresence>
-          {damageNumbers.map(dn => (
+      {/* ── BATTLE ──────────────────────────────────────────────────── */}
+      {phase === 'battle' && playerCard && opponentCard && (
+        <div className="space-y-4">
+          {/* Turn counter */}
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Star className="w-4 h-4 text-yellow-400" />
+            <span>Turn {turn}/{maxTurns}</span>
+            <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-yellow-400 rounded-full transition-all duration-500" style={{ width: `${(turn / maxTurns) * 100}%` }} />
+            </div>
+            <span className="font-bold text-xs" style={{ color: difficulty.color }}>{difficulty.label}</span>
+          </div>
+
+          {/* Opponent panel */}
+          <motion.div animate={shakeSide === 'opponent' ? { x: [-6, 6, -4, 4, 0] } : {}} transition={{ duration: 0.35 }}>
+            <FighterPanel card={opponentCard} hp={opponentHp} maxHp={maxOpponentHp} energy={opponentEnergy}
+              buffs={opponentBuffs} focusStacks={opponentFocus} isPlayer={false}
+              typeMatchup={typeMatchupOpponent} selectedMove={opponentMove} waiting={aiThinking && !opponentMove} />
+          </motion.div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-700" />
+            <span className="text-gray-500 font-bold text-sm">VS</span>
+            <div className="flex-1 h-px bg-gray-700" />
+          </div>
+
+          {/* Player panel */}
+          <motion.div animate={shakeSide === 'player' ? { x: [6, -6, 4, -4, 0] } : {}} transition={{ duration: 0.35 }}>
+            <FighterPanel card={playerCard} hp={playerHp} maxHp={maxPlayerHp} energy={playerEnergy}
+              buffs={playerBuffs} focusStacks={playerFocus} isPlayer={true}
+              typeMatchup={typeMatchupPlayer} selectedMove={playerMove} waiting={false} />
+          </motion.div>
+
+          {/* Move buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            {Object.values(MOVES).map(mv => {
+              const meta = MOVE_META[mv.id];
+              if (!meta) return null;
+              const Icon = meta.icon;
+              const canAfford = playerEnergy >= mv.energyCost;
+              const onCooldown = !!mistralCooldowns[mv.id];
+              const locked = !!playerMove || onCooldown || !canAfford || !!winner;
+              return (
+                <motion.button
+                  key={mv.id}
+                  whileHover={locked ? {} : { scale: 1.03 }}
+                  whileTap={locked ? {} : { scale: 0.97 }}
+                  onClick={() => !locked && handlePlayerMove(mv.id)}
+                  disabled={locked}
+                  className={`relative p-4 rounded-xl border-2 text-left transition-all overflow-hidden ${
+                    locked
+                      ? 'border-gray-700/40 bg-gray-800/40 text-gray-500 cursor-not-allowed'
+                      : `border-transparent bg-gradient-to-br ${meta.color} text-white shadow-lg`
+                  } ${playerMove === mv.id ? 'ring-2 ring-white/50' : ''}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-6 h-6 shrink-0" />
+                    <div>
+                      <div className="font-bold">{mv.name}</div>
+                      <div className="text-xs opacity-80">{meta.hint}</div>
+                    </div>
+                  </div>
+                  {onCooldown && (
+                    <div className="absolute inset-0 bg-black/65 flex items-center justify-center rounded-xl">
+                      <span className="text-xs font-bold text-red-300">⏳ Cooldown</span>
+                    </div>
+                  )}
+                  {!canAfford && !onCooldown && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl">
+                      <span className="text-xs font-bold text-gray-400">Need ⚡ {mv.energyCost}</span>
+                    </div>
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+
+          {/* Battle log */}
+          <div ref={logRef} className="bg-gray-900/60 border border-gray-700/40 rounded-xl p-3 h-32 overflow-y-auto space-y-0.5">
+            {log.map((l, i) => <div key={i} className="text-xs text-gray-300 leading-relaxed">{l}</div>)}
+          </div>
+        </div>
+      )}
+
+      {/* ── RESULT OVERLAY ────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {winner && phase === 'battle' && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
             <motion.div
-              key={dn.id}
-              initial={{ opacity: 1, y: 0, x: dn.isPlayer ? '40%' : '60%' }}
-              animate={{ opacity: 0, y: -100 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1 }}
-              className={`absolute text-4xl font-bold ${dn.isPlayer ? 'text-red-500' : 'text-green-500'}`}
-              style={{ top: '40%' }}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+              className="bg-gray-900 rounded-3xl p-8 max-w-sm w-full border text-center"
+              style={{ borderColor: winner === 'player' ? '#22c55e50' : winner === 'draw' ? '#f59e0b50' : '#ef444450' }}
             >
-              -{dn.value}
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: 'spring' }}
+                className="text-7xl mb-4">
+                {winner === 'player' ? '🏆' : winner === 'draw' ? '🤝' : '💀'}
+              </motion.div>
+              <h2 className={`text-3xl font-black mb-2 ${winner === 'player' ? 'text-green-400' : winner === 'draw' ? 'text-yellow-400' : 'text-red-400'}`}>
+                {winner === 'player' ? 'Victory!' : winner === 'draw' ? 'Draw!' : 'Defeat'}
+              </h2>
+              <p className="text-gray-400 mb-6 text-sm">
+                {winner === 'player'
+                  ? `You defeated ${opponentCard?.name} on ${difficulty.label}!`
+                  : winner === 'draw'
+                  ? 'Both fighters fell at the same time.'
+                  : `${opponentCard?.name} was too powerful. Train harder!`}
+              </p>
+              <div className="bg-gray-800/60 rounded-2xl p-4 mb-6 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Credits Earned</span>
+                  <span className="font-black text-yellow-400">+{reward}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">XP Earned</span>
+                  <span className="font-black text-blue-400">+{Math.floor((winner === 'player' ? 75 : winner === 'draw' ? 20 : 10) * difficulty.xpMult)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Turns</span>
+                  <span className="font-bold text-gray-300">{turn} / {maxTurns}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Difficulty</span>
+                  <span className="font-bold" style={{ color: difficulty.color }}>{difficulty.label}</span>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => { setPhase('pick-card'); setPlayerCard(null); setWinner(null); }}
+                  className="flex-1 py-3 rounded-xl border border-gray-600 text-gray-300 hover:bg-gray-800 flex items-center justify-center gap-2 text-sm font-medium"
+                >
+                  <RotateCcw className="w-4 h-4" /> Play Again
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    onXpGain(Math.floor((winner === 'player' ? 75 : winner === 'draw' ? 20 : 10) * difficulty.xpMult));
+                    onComplete(reward);
+                  }}
+                  className="flex-1 py-3 rounded-xl font-bold text-sm shadow-lg"
+                  style={{ background: winner === 'player' ? 'linear-gradient(135deg,#22c55e,#16a34a)' : '#374151' }}
+                >
+                  Continue
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating damage numbers */}
+      <div className="fixed inset-0 pointer-events-none z-40">
+        <AnimatePresence>
+          {floats.map(f => (
+            <motion.div key={f.id}
+              initial={{ opacity: 1, y: 0, scale: 1.4 }}
+              animate={{ opacity: 0, y: -90 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.0, ease: 'easeOut' }}
+              className="absolute font-black text-3xl drop-shadow-lg select-none"
+              style={{
+                left: f.side === 'player' ? '20%' : '65%',
+                top: '40%',
+                color: '#ef4444',
+                textShadow: '0 2px 10px rgba(0,0,0,0.9)',
+              }}
+            >
+              -{f.value}
             </motion.div>
           ))}
         </AnimatePresence>

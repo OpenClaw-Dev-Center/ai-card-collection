@@ -15,7 +15,8 @@ import {
   Layers as LayersIcon,
   TrendingUp as TrendingUpIcon,
   Lock as LockIcon,
-  Star as StarIcon
+  Star as StarIcon,
+  Castle as CastleIcon
 } from 'lucide-react';
 import { PACK_TYPES, xpForLevel, xpToNextLevel } from '../data/cards';
 
@@ -31,6 +32,7 @@ export function Dashboard({
   );
 
   const deckBattleUnlocked = unlockedFeatures.includes('deck-battle');
+  const towerDefenseUnlocked = unlockedFeatures.includes('tower-defense');
 
   // XP bar
   const xpInLevel = xp - xpForLevel(level);
@@ -173,6 +175,24 @@ export function Dashboard({
                   <LockIcon className="w-5 h-5" />
                   Deck Battle
                   <span className="text-xs bg-gray-600/60 px-2 py-0.5 rounded-full">Lv 3</span>
+                </div>
+              )}
+
+              {towerDefenseUnlocked ? (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => onNavigate('tower-defense')}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 rounded-xl font-bold shadow-lg"
+                >
+                  <CastleIcon className="w-5 h-5" />
+                  Tower Defense
+                </motion.button>
+              ) : (
+                <div className="flex items-center gap-2 px-6 py-3 bg-gray-700/60 rounded-xl font-bold text-gray-400 border border-gray-600/40 cursor-default select-none" title="Reach Level 5 to unlock">
+                  <LockIcon className="w-5 h-5" />
+                  Tower Defense
+                  <span className="text-xs bg-gray-600/60 px-2 py-0.5 rounded-full">Lv 5</span>
                 </div>
               )}
             </div>

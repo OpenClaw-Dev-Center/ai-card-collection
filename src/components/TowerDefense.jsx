@@ -5,9 +5,9 @@ import { CARD_POOL, RARITIES, calculateHP, PROVIDERS, getTypeMultiplier } from '
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const LANES = 4;
-const COLS  = 7;  // 0–1 = tower zone, 2–6 = combat lane
-const TOWER_COLS = [0, 1];
-const CELL_W = 80;
+const COLS  = 9;  // 0–3 = tower zone (4 cols), 4–8 = combat lane
+const TOWER_COLS = [0, 1, 2, 3];
+const CELL_W = 70;
 const CELL_H = 68;
 const TICK_MS = 600;
 const MAX_WAVES = 10;
@@ -32,13 +32,91 @@ const BOSS_TYPES = [
   { name: 'Titan Gemini',   provider: 'GEMINI',   icon: '♊', baseHp: 320, speed: 2, reward: 480, isBoss: true },
 ];
 
+// ─── Lane Synergies ──────────────────────────────────────────────────────────
+// Ordered highest→lowest so the first match wins (strongest synergy takes priority)
+const LANE_SYNERGIES = [
+  {
+    id: 'hivemind',
+    name: 'Neural Hivemind',
+    emoji: '🧠',
+    condition: (ps) => { const c = {}; ps.forEach(p => c[p] = (c[p] || 0) + 1); return Object.values(c).some(v => v >= 4); },
+    dmgMult: 2.5, rangeMult: 1.3,
+    color: '#ef4444',
+    desc: '4× same provider → ×2.5 DPS, +30% range',
+  },
+  {
+    id: 'ensemble',
+    name: 'Model Ensemble',
+    emoji: '🔥',
+    condition: (ps) => { const c = {}; ps.forEach(p => c[p] = (c[p] || 0) + 1); return Object.values(c).some(v => v >= 3); },
+    dmgMult: 1.9, rangeMult: 1.15,
+    color: '#f59e0b',
+    desc: '3× same provider → ×1.9 DPS, +15% range',
+  },
+  {
+    id: 'open_stack',
+    name: 'Open Source Stack',
+    emoji: '🦙',
+    condition: (ps) => (ps.includes('LLAMA') || ps.includes('MISTRAL')) && ps.includes('DEEPSEEK'),
+    dmgMult: 1.65, rangeMult: 1.0,
+    color: '#8b5cf6',
+    desc: 'DeepSeek + Llama/Mistral → ×1.65 DPS',
+  },
+  {
+    id: 'east_west',
+    name: 'East-West Fusion',
+    emoji: '🌐',
+    condition: (ps) => ps.includes('DEEPSEEK') && ps.includes('GPT'),
+    dmgMult: 1.55, rangeMult: 1.0,
+    color: '#6366f1',
+    desc: 'DeepSeek + GPT → ×1.55 DPS',
+  },
+  {
+    id: 'frontier',
+    name: 'Frontier Alliance',
+    emoji: '🤝',
+    condition: (ps) => ps.includes('CLAUDE') && ps.includes('GPT'),
+    dmgMult: 1.5, rangeMult: 1.2,
+    color: '#10b981',
+    desc: 'Claude + GPT → ×1.5 DPS, +20% range',
+  },
+  {
+    id: 'multimodal',
+    name: 'Multimodal Surge',
+    emoji: '✨',
+    condition: (ps) => ps.includes('GEMINI') && (ps.includes('CLAUDE') || ps.includes('MISTRAL')),
+    dmgMult: 1.45, rangeMult: 1.1,
+    color: '#3b82f6',
+    desc: 'Gemini + Claude/Mistral → ×1.45 DPS, +10% range',
+  },
+  {
+    id: 'parallel',
+    name: 'Parallel Inference',
+    emoji: '⚡',
+    condition: (ps) => { const c = {}; ps.forEach(p => c[p] = (c[p] || 0) + 1); return Object.values(c).some(v => v >= 2); },
+    dmgMult: 1.4, rangeMult: 1.0,
+    color: '#a78bfa',
+    desc: '2× same provider → ×1.4 DPS',
+  },
+];
+
+function getLaneSynergy(lane, towers) {
+  const laneTowers = Object.entries(towers).filter(([k]) => parseInt(k.split('-')[0]) === lane);
+  if (laneTowers.length < 2) return null;
+  const providers = laneTowers.map(([, t]) => t.card?.provider).filter(Boolean);
+  for (const syn of LANE_SYNERGIES) {
+    if (syn.condition(providers)) return syn;
+  }
+  return null;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let eidCounter = 0;
 function makeEnemy(wave, lane) {
   const isBossWave = wave === 5 || wave === MAX_WAVES;
   const types = isBossWave ? BOSS_TYPES : ENEMY_TYPES;
   const t = types[Math.floor(Math.random() * types.length)];
-  const hpMult = 1 + (wave - 1) * 0.15 + (isBossWave ? 0.5 : 0);
+  const hpMult = 1 + (wave - 1) * 0.30 + (isBossWave ? 0.6 : 0);
   return {
     id: ++eidCounter,
     ...t,
@@ -61,7 +139,7 @@ function towerRange(card) {
 }
 
 // ─── Grid Cell ────────────────────────────────────────────────────────────────
-function GridCell({ col, lane, tower, isDropTarget, onClick }) {
+function GridCell({ col, lane, tower, isDropTarget, onClick, synColor }) {
   const card = tower?.card;
   const isTowerZone = TOWER_COLS.includes(col);
   const color = card ? (PROVIDERS[card.provider]?.color || '#6b7280') : '#1f2937';
@@ -76,7 +154,8 @@ function GridCell({ col, lane, tower, isDropTarget, onClick }) {
       style={{
         width: CELL_W, height: CELL_H,
         background: card ? `${color}22` : isTowerZone ? '#111827' : 'transparent',
-        borderColor: card ? `${color}60` : undefined,
+        borderColor: card && synColor ? `${synColor}90` : card ? `${color}60` : undefined,
+        boxShadow: card && synColor ? `0 0 8px ${synColor}50` : undefined,
       }}
     >
       {isTowerZone && !card && (
@@ -85,11 +164,11 @@ function GridCell({ col, lane, tower, isDropTarget, onClick }) {
       {card && (
         <div className="text-center">
           <div className="text-2xl">{card.providerInfo?.icon || '🤖'}</div>
-          <div className="text-[9px] text-gray-300 truncate w-16 text-center">{card.name.split(' ')[0]}</div>
+          <div className="text-[9px] text-gray-300 truncate w-12 text-center">{card.name.split(' ')[0]}</div>
           <div className="text-[8px] font-bold" style={{ color: RARITIES[card.rarity]?.color }}>
             {card.rarity.slice(0,3)}
           </div>
-          <div className="w-12 h-1 bg-gray-700 rounded-full overflow-hidden mt-0.5 mx-auto">
+          <div className="w-10 h-1 bg-gray-700 rounded-full overflow-hidden mt-0.5 mx-auto">
             <div className="h-full rounded-full transition-all duration-300"
               style={{
                 width: `${Math.max(0, (tower.hp / tower.maxHp) * 100)}%`,
@@ -203,11 +282,18 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
     }
 
     // Step 2: Each tower fires at the closest (frontmost) enemy in range
+    // Compute per-lane synergy multipliers first
+    const laneSynMults = {};
+    for (let ln = 0; ln < LANES; ln++) {
+      const syn = getLaneSynergy(ln, newTowers);
+      laneSynMults[ln] = syn ? { dmg: syn.dmgMult, range: syn.rangeMult } : { dmg: 1.0, range: 1.0 };
+    }
     for (const [key, tower] of Object.entries(newTowers)) {
       const [ls, cs] = key.split('-');
       const tLane = parseInt(ls), tCol = parseInt(cs);
-      const range = towerRange(tower.card);
-      const dmg   = towerDps(tower.card);
+      const synMult = laneSynMults[tLane];
+      const range = Math.floor(towerRange(tower.card) * synMult.range);
+      const dmg   = Math.floor(towerDps(tower.card) * synMult.dmg);
       const targets = newEnemies
         .map((e, i) => ({ e, i }))
         .filter(({ e }) => e.lane === tLane && e.col > tCol && e.col <= tCol + range)
@@ -376,59 +462,102 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
       </div>
 
       {/* Grid */}
-      <div className="mb-4 overflow-x-auto">
+      <div className="mb-2 overflow-x-auto">
         <div className="inline-block">
           {/* Column labels */}
-          <div className="flex mb-1">
+          <div className="flex mb-1 items-center">
             <div style={{ width: 40 }} />
+            <div style={{ width: 22 }} />
             {Array.from({ length: COLS }).map((_, col) => (
-              <div key={col} style={{ width: CELL_W }} className="text-center text-xs text-gray-600">
-                {TOWER_COLS.includes(col) ? '🏰' : col === COLS - 1 ? '→' : ''}
-              </div>
+              <React.Fragment key={col}>
+                {col === TOWER_COLS.length && <div style={{ width: 6 }} />}
+                <div style={{ width: CELL_W, margin: '0 1px' }} className="text-center text-xs text-gray-500">
+                  {TOWER_COLS.includes(col) ? '🏰' : col === TOWER_COLS.length ? '⚔️' : col === COLS - 1 ? '→' : ''}
+                </div>
+              </React.Fragment>
             ))}
           </div>
-          {Array.from({ length: LANES }).map((_, lane) => (
-            <div key={lane} className="flex items-center mb-1 gap-0.5">
-              <div style={{ width: 40 }} className="text-xs text-gray-500 text-right pr-2">L{lane+1}</div>
-              {Array.from({ length: COLS }).map((_, col) => {
-                const key = `${lane}-${col}`;
-                const towerObj = towers[key];
-                const isTZ = TOWER_COLS.includes(col);
-                // Find enemies in this cell
-                const cellEnemies = enemies.filter(e => e.lane === lane && e.col === col);
-                return (
-                  <div key={col} className="relative" style={{ width: CELL_W, height: CELL_H, margin: '0 1px' }}>
-                    <GridCell
-                      col={col} lane={lane} tower={towerObj}
-                      isDropTarget={isTZ && !!selectedCard && !towerObj}
-                      onClick={() => {
-                        if (isTZ) {
-                          if (towerObj) removeTower(lane, col);
-                          else placeTower(lane, col);
-                        }
-                      }}
-                    />
-                    {/* Enemy overlays */}
-                    {cellEnemies.map(e => (
-                      <motion.div
-                        key={e.id}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
-                      >
-                        <div className={`text-xl ${e.isBoss ? 'text-3xl' : ''}`}>{e.icon}</div>
-                        <div className="w-10 h-1 bg-gray-700 rounded-full overflow-hidden">
-                          <div className="h-full bg-red-500 rounded-full transition-all"
-                            style={{ width: `${Math.max(0, (e.hp / e.maxHp) * 100)}%` }} />
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+          {Array.from({ length: LANES }).map((_, lane) => {
+            const activeSyn = getLaneSynergy(lane, towers);
+            return (
+              <div key={lane} className="flex items-center mb-1">
+                <div style={{ width: 40 }} className="text-xs text-gray-500 text-right pr-2 shrink-0">L{lane+1}</div>
+                {/* Synergy badge */}
+                <div style={{ width: 22 }} className="flex items-center justify-center shrink-0">
+                  {activeSyn && (
+                    <motion.span
+                      animate={{ scale: [1, 1.25, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="text-sm cursor-help leading-none"
+                      title={`${activeSyn.name}: ${activeSyn.desc}`}
+                    >
+                      {activeSyn.emoji}
+                    </motion.span>
+                  )}
+                </div>
+                {Array.from({ length: COLS }).map((_, col) => {
+                  const key = `${lane}-${col}`;
+                  const towerObj = towers[key];
+                  const isTZ = TOWER_COLS.includes(col);
+                  const cellEnemies = enemies.filter(e => e.lane === lane && e.col === col);
+                  return (
+                    <React.Fragment key={col}>
+                      {col === TOWER_COLS.length && (
+                        <div style={{ width: 6, height: CELL_H, background: '#374151', borderRadius: 2, margin: '0 0px', flexShrink: 0 }} />
+                      )}
+                      <div className="relative" style={{ width: CELL_W, height: CELL_H, margin: '0 1px', flexShrink: 0 }}>
+                        <GridCell
+                          col={col} lane={lane} tower={towerObj}
+                          isDropTarget={isTZ && !!selectedCard && !towerObj}
+                          synColor={activeSyn && isTZ && towerObj ? activeSyn.color : null}
+                          onClick={() => {
+                            if (isTZ) {
+                              if (towerObj) removeTower(lane, col);
+                              else placeTower(lane, col);
+                            }
+                          }}
+                        />
+                        {/* Enemy overlays */}
+                        {cellEnemies.map(e => (
+                          <motion.div
+                            key={e.id}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
+                          >
+                            <div className={`text-xl ${e.isBoss ? 'text-3xl' : ''}`}>{e.icon}</div>
+                            <div className="w-10 h-1 bg-gray-700 rounded-full overflow-hidden">
+                              <div className="h-full bg-red-500 rounded-full transition-all"
+                                style={{ width: `${Math.max(0, (e.hp / e.maxHp) * 100)}%` }} />
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      {/* Active synergies strip */}
+      <div className="mb-3 min-h-[28px] flex flex-wrap items-center gap-2">
+        <span className="text-[10px] text-gray-600 shrink-0">Synergies:</span>
+        {Array.from({ length: LANES }).map((_, lane) => {
+          const syn = getLaneSynergy(lane, towers);
+          if (!syn) return null;
+          return (
+            <span key={lane} className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: `${syn.color}18`, color: syn.color, border: `1px solid ${syn.color}40` }}>
+              {syn.emoji} L{lane+1} {syn.name}
+            </span>
+          );
+        })}
+        {Array.from({ length: LANES }).every((_, l) => !getLaneSynergy(l, towers)) && (
+          <span className="text-[10px] text-gray-700">None active — place 2+ matching towers in a lane to trigger</span>
+        )}
       </div>
 
       {/* Bottom panel: card picker + log */}
@@ -466,9 +595,9 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
             })}
           </div>
           <div className="mt-2 text-[10px] text-gray-500 space-y-0.5">
-            <div>🏰 Click a tower slot to place • Click placed tower to sell (50% refund)</div>
-            <div>⚡ Tower damage scales with card Power + Speed stats</div>
-            <div>🎯 Range scales with Intelligence stat</div>
+            <div>🏰 Click any of the 4 tower columns to place • Click placed tower to sell (50% refund)</div>
+            <div>⚡ Power+Speed → DPS · 🎯 Intelligence → range · 🔮 type matchups apply</div>
+            <div>✨ <span className="text-purple-400">Synergies:</span> 2× same=+40% · Frontier Alliance (Claude+GPT)=+50% · Open Stack=+65% · Ensemble=+90%…</div>
           </div>
         </div>
 

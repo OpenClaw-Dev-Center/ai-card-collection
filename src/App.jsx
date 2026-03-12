@@ -170,10 +170,11 @@ function App() {
       }
     } else {
       // Offline/local only
-      const savedCollectionStr = localStorage.getItem(`collection_${user.username}`) || '[]';
+      const offlineKey = user.id || user.username;
+      const savedCollectionStr = localStorage.getItem(`collection_${offlineKey}`) || '[]';
       const savedCollection = JSON.parse(savedCollectionStr);
       const updatedCollection = [...savedCollection, ...newCards];
-      localStorage.setItem(`collection_${user.username}`, JSON.stringify(updatedCollection));
+      localStorage.setItem(`collection_${offlineKey}`, JSON.stringify(updatedCollection));
     }
   };
 

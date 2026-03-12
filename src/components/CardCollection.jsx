@@ -13,7 +13,7 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
 
   useEffect(() => {
     if (user) {
-      const key = typeof user === 'string' ? user : user.username;
+      const key = typeof user === 'string' ? user : (user.id || user.username);
       const saved = JSON.parse(localStorage.getItem(`collection_${key}`) || '[]');
       setCollection(saved);
     }
@@ -58,7 +58,7 @@ export function CardCollection({ user, onBack, onXpGain = () => {} }) {
     const result = upgradeCardWithDupes(card, collection);
     if (!result) return;
     const { newCollection } = result;
-    const key = typeof user === 'string' ? user : user.username;
+    const key = typeof user === 'string' ? user : (user.id || user.username);
     localStorage.setItem(`collection_${key}`, JSON.stringify(newCollection));
     setCollection(newCollection);
     setUpgradingCard(null);

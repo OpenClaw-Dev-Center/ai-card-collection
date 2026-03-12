@@ -4,7 +4,7 @@ import {
   ArrowLeft, Swords, Coins, Heart, Zap, Shield, Eye, Wind, Brain,
   Sparkles, Repeat
 } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { api } from '../services/api';
 import { CARD_POOL, RARITIES, MOVES, calculateHP, PROVIDERS } from '../data/cards';
 
 // Ability icons mapping
@@ -51,7 +51,6 @@ const getAbilityColor = (providerKey) => {
 };
 
 export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => {} }) {
-  const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [opponentCard, setOpponentCard] = useState(null);
@@ -486,13 +485,13 @@ export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => 
       setWinner('player');
       const earned = 200 + turnCount * 50; // Base + turn bonus
       setReward(earned);
-      recordBattle('win');
+      if (user?.id) api.recordBattleResult(user.id, 'win', turnCount, null).catch(() => {});
       addLog(`🎉 Victory! You earned ${earned} credits!`);
     } else if (playerHP <= 0) {
       setWinner('opponent');
       const consolation = 50;
       setReward(consolation);
-      recordBattle('loss');
+      if (user?.id) api.recordBattleResult(user.id, 'loss', turnCount, null).catch(() => {});
       addLog(`💀 Defeat! You earned ${consolation} credits.`);
     } else {
       addLog(`HP: You ${Math.ceil(playerHP)} | Opponent ${Math.ceil(opponentHP)}`);

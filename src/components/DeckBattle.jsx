@@ -5,7 +5,7 @@ import {
   ChevronRight, RotateCcw, Trophy, Skull, Plus, X, Info,
   Save, FolderOpen, Filter, SortAsc, Trash2
 } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { api } from '../services/api';
 import { PROVIDERS, calculateHP } from '../data/cards';
 
 // ─────────────────────────────────────────────
@@ -363,7 +363,6 @@ function savePresets(user, presets) {
 }
 
 export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
-  const { recordBattle } = useAuth();
   const [collection, setCollection] = useState([]);
   const [phase, setPhase] = useState('build'); // build | reveal | battle | result
   const [playerDeckSelection, setPlayerDeckSelection] = useState([]); // cards being built
@@ -790,8 +789,8 @@ export function DeckBattle({ user, onComplete, onBack, onXpGain = () => {} }) {
     setWinner(side);
     const earned = side === 'player' ? Math.max(400, 3090 - turnCount * 90) : 75;
     setReward(earned);
-    if (side === 'player') recordBattle('win');
-    else recordBattle('loss');
+    if (side === 'player') { if (user?.id) api.recordBattleResult(user.id, 'win', turnCount, null).catch(() => {}); }
+    else { if (user?.id) api.recordBattleResult(user.id, 'loss', turnCount, null).catch(() => {}); }
     addLog(side === 'player' ? `🏆 Victory! You earned ${earned} credits!` : `💀 Defeat! Consolation: ${earned} credits.`);
     setPhase('result');
     flashScreen(side === 'player' ? '#22c55e60' : '#ef444460');

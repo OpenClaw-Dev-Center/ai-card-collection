@@ -353,7 +353,7 @@ function SynergyBadge({ synergy }) {
 // ─────────────────────────────────────────────
 //  MAIN COMPONENT
 // ─────────────────────────────────────────────
-const PRESET_KEY = (user) => `deckPresets_${user}`;
+const PRESET_KEY = (user) => `deckPresets_${typeof user === 'string' ? user : (user?.username || user?.id || 'guest')}`;
 
 function loadPresets(user) {
   try { return JSON.parse(localStorage.getItem(PRESET_KEY(user)) || '[]'); } catch { return []; }

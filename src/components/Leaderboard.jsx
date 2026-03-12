@@ -143,12 +143,12 @@ export function Leaderboard({ user, unlockedFeatures = ['game'], onBack }) {
         className="max-w-4xl mx-auto space-y-3"
       >
         {users
-          .filter(p => leaderboardUnlocked || p.username !== user)
+          .filter(p => leaderboardUnlocked || p.username !== (typeof user === 'string' ? user : user?.username))
           .slice(0, 50)
           .map((player, index) => {
           const winRate = player.totalBattles > 0 ? player.wins / player.totalBattles : 0;
           const medal = getMedal(index);
-          const isCurrentUser = player.username === user;
+          const isCurrentUser = player.username === (typeof user === 'string' ? user : user?.username);
 
           return (
             <motion.div

@@ -46,8 +46,9 @@ export function Dashboard({
   // Get user stats from localStorage
   const userStats = useMemo(() => {
     if (!user) return { wins: 0, playtimeHours: 0 };
+    const userKey = typeof user === 'string' ? user : user.username;
     const users = JSON.parse(localStorage.getItem('users') || '{}');
-    const stats = users[user] || {};
+    const stats = users[userKey] || {};
     return {
       wins: stats.wins || 0,
       playtimeHours: stats.playtimeHours || 0
@@ -101,7 +102,7 @@ export function Dashboard({
               <span className="text-sm font-bold text-yellow-300">Lv {level}</span>
             </div>
             <div className="text-right">
-              <div className="text-sm font-medium">{user}</div>
+              <div className="text-sm font-medium">{typeof user === 'string' ? user : user?.username}</div>
               <div className="text-xs text-green-400">● Online</div>
             </div>
             <button
@@ -124,7 +125,7 @@ export function Dashboard({
         >
           <div className="absolute inset-0 bg-grid-white/5" />
           <div className="relative z-10">
-            <h2 className="text-3xl font-bold mb-2">Welcome back, {user}! 👋</h2>
+            <h2 className="text-3xl font-bold mb-2">Welcome back, {typeof user === 'string' ? user : user?.username}! 👋</h2>
             <p className="text-gray-300 mb-4">
               Collect AI models, battle through challenges, and upgrade your collection to legendary status.
             </p>

@@ -116,6 +116,13 @@ export function useGame(user) {
     setPacks(newPacks);
     const key = getUserKey(user);
     if (key) localStorage.setItem(`packs_${key}`, JSON.stringify(newPacks));
+    // Grant prestige crystals if the reward includes them
+    if (reward.crystals) {
+      const newCrystals = prestigeCrystals + reward.crystals;
+      setPrestigeCrystals(newCrystals);
+      if (key) localStorage.setItem(`prestige_${key}`, JSON.stringify(newCrystals));
+      if (user?.id) api.updateProfile(user.id, { prestigeCrystals: newCrystals }).catch(() => {});
+    }
     const newClaimed = [...claimedLevels, rewardLevel];
     setClaimedLevels(newClaimed);
     if (key) localStorage.setItem(`claimedLevels_${key}`, JSON.stringify(newClaimed));

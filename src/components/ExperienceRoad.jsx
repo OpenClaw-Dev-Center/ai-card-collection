@@ -14,8 +14,13 @@ const PACK_LABELS = {
   claude_pack: 'Claude Pack 🤖',
   gpt_pack: 'GPT Pack 🧠',
   gemini_pack: 'Gemini Pack ✨',
+  deepseek_pack: 'DeepSeek Pack 🔮',
+  mistral_pack: 'Mistral Pack 🌊',
+  llama_pack: 'Llama Pack 🦙',
   opensource_pack: 'Open Source Pack 🦙',
   rivals_pack: 'Rivals Pack ⚔️',
+  elite_pack: 'Elite Pack 💎',
+  mythic_pack: 'Mythic Pack 🔥',
 };
 
 function packSummary(packs) {
@@ -153,6 +158,11 @@ export function ExperienceRoad({ user, xp, level, claimedLevels, onClaimReward, 
                   <div className={`text-sm mt-0.5 ${isUnlocked ? 'text-gray-300' : 'text-gray-600'}`}>
                     <Gift className="w-3 h-3 inline mr-1" />
                     {packSummary(reward.packs)}
+                    {reward.crystals > 0 && (
+                      <span className={`ml-2 font-bold ${isUnlocked ? 'text-indigo-300' : 'text-gray-600'}`}>
+                        + {reward.crystals} 💎
+                      </span>
+                    )}
                     {reward.unlock && (
                       <span className={`ml-2 text-xs font-bold ${isUnlocked ? 'text-yellow-400' : 'text-gray-600'}`}>
                         {reward.unlockLabel}

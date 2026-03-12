@@ -360,6 +360,49 @@ export const PACK_TYPES = {
     guaranteedRarity: 'EPIC',
     providerFilter: ['CLAUDE', 'GPT'],
     probabilityOverrides: { MYTHIC: 0.04, LEGENDARY: 0.15, EPIC: 0.30, RARE: 0.35, COMMON: 0.16 }
+  },
+  DEEPSEEK_PACK: {
+    name: 'DeepSeek Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'RARE',
+    providerFilter: ['DEEPSEEK'],
+    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.08, EPIC: 0.20, RARE: 0.35, COMMON: 0.35 }
+  },
+  MISTRAL_PACK: {
+    name: 'Mistral Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'RARE',
+    providerFilter: ['MISTRAL'],
+    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.08, EPIC: 0.20, RARE: 0.35, COMMON: 0.35 }
+  },
+  LLAMA_PACK: {
+    name: 'Llama Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'RARE',
+    providerFilter: ['LLAMA'],
+    probabilityOverrides: { MYTHIC: 0.02, LEGENDARY: 0.08, EPIC: 0.20, RARE: 0.35, COMMON: 0.35 }
+  },
+  ELITE_PACK: {
+    name: 'Elite Pack',
+    cost: 0,
+    cards: 8,
+    rewardOnly: true,
+    guaranteedRarity: 'EPIC',
+    probabilityOverrides: { MYTHIC: 0.06, LEGENDARY: 0.20, EPIC: 0.35, RARE: 0.30, COMMON: 0.09 }
+  },
+  MYTHIC_PACK: {
+    name: 'Mythic Pack',
+    cost: 0,
+    cards: 5,
+    rewardOnly: true,
+    guaranteedRarity: 'LEGENDARY',
+    probabilityOverrides: { MYTHIC: 0.25, LEGENDARY: 0.50, EPIC: 0.20, RARE: 0.04, COMMON: 0.01 }
   }
 };
 
@@ -379,22 +422,35 @@ export function levelFromXp(xp) {
 // Level rewards.  'packs' keys must match PACK_TYPES keys (lowercase).
 // 'unlock' is written into unlockedFeatures set.
 export const LEVEL_REWARDS = {
-  2:  { label: 'First Steps',    packs: { basic: 2 } },
-  3:  { label: 'Strategist',     packs: { basic: 1 }, unlock: 'deck-battle', unlockLabel: '⚔️ Deck Battle Unlocked!' },
-  4:  { label: 'Rising Star',    packs: { premium: 1 } },
-  5:  { label: 'AI Devotee',     packs: { claude_pack: 1 }, unlock: 'tower-defense', unlockLabel: '🏰 Tower Defense Unlocked!' },
-  6:  { label: 'Pack Opener',    packs: { basic: 3 } },
-  7:  { label: 'Veteran',        packs: { premium: 2 } },
-  8:  { label: 'Champion',       packs: { mega: 1 }, unlock: 'leaderboard', unlockLabel: '🏆 Leaderboard Unlocked!' },
-  9:  { label: 'Innovator',      packs: { gpt_pack: 1 } },
-  10: { label: 'Elite Collector', packs: { mega: 2 } },
-  12: { label: 'Power Surge',    packs: { premium: 3 } },
-  14: { label: 'Transformer',    packs: { gemini_pack: 1 } },
-  15: { label: 'Legend',         packs: { legendary: 1 } },
-  18: { label: 'Open Source Hero', packs: { opensource_pack: 1 } },
-  20: { label: 'Rival Breaker',  packs: { legendary: 2, rivals_pack: 1 } },
-  25: { label: 'Mega Collector', packs: { mega: 5 } },
-  30: { label: 'Grand Master',   packs: { legendary: 3 } },
+  2:  { label: 'First Steps',      packs: { basic: 3 },                     crystals: 0   },
+  3:  { label: 'Strategist',       packs: { premium: 1 },                   crystals: 10,  unlock: 'deck-battle',   unlockLabel: '⚔️ Deck Battle Unlocked!' },
+  4:  { label: 'Rising Star',      packs: { premium: 2, basic: 2 },         crystals: 15  },
+  5:  { label: 'AI Devotee',       packs: { claude_pack: 1, premium: 1 },   crystals: 20,  unlock: 'tower-defense', unlockLabel: '🏰 Tower Defense Unlocked!' },
+  6:  { label: 'Pack Opener',      packs: { premium: 2 },                   crystals: 25  },
+  7:  { label: 'Veteran',          packs: { premium: 3, gpt_pack: 1 },      crystals: 30  },
+  8:  { label: 'Champion',         packs: { mega: 1 },                      crystals: 40,  unlock: 'leaderboard',   unlockLabel: '🏆 Leaderboard Unlocked!' },
+  9:  { label: 'Innovator',        packs: { mega: 1, gemini_pack: 1 },      crystals: 50  },
+  10: { label: 'Elite Collector',  packs: { mega: 2, elite_pack: 1 },       crystals: 75  },
+  11: { label: 'Tech Pioneer',     packs: { premium: 3 },                   crystals: 60  },
+  12: { label: 'Power Surge',      packs: { mega: 2, deepseek_pack: 1 },    crystals: 80  },
+  13: { label: 'Data Hoarder',     packs: { premium: 4 },                   crystals: 70  },
+  14: { label: 'Transformer',      packs: { mega: 2, mistral_pack: 1 },     crystals: 90  },
+  15: { label: 'Legend',           packs: { legendary: 1, elite_pack: 1 },  crystals: 150 },
+  16: { label: 'Apex Trainer',     packs: { mega: 3 },                      crystals: 100 },
+  17: { label: 'Model Whisperer',  packs: { llama_pack: 1, mega: 2 },       crystals: 110 },
+  18: { label: 'Open Source Hero', packs: { opensource_pack: 1, mega: 2 },  crystals: 120 },
+  19: { label: 'Boundary Pusher',  packs: { mega: 3 },                      crystals: 130 },
+  20: { label: 'Rival Breaker',    packs: { legendary: 2, rivals_pack: 1 }, crystals: 200 },
+  21: { label: 'Compute Lord',     packs: { mega: 3 },                      crystals: 150 },
+  22: { label: 'Token Master',     packs: { mega: 4 },                      crystals: 160 },
+  23: { label: 'Alignment Sage',   packs: { elite_pack: 2 },                crystals: 175 },
+  24: { label: 'Singularity Near', packs: { legendary: 1, elite_pack: 1 },  crystals: 200 },
+  25: { label: 'Mega Collector',   packs: { legendary: 2, mythic_pack: 1 }, crystals: 300 },
+  26: { label: 'Deep Thinker',     packs: { mega: 4 },                      crystals: 200 },
+  27: { label: 'Neural Architect', packs: { elite_pack: 2 },                crystals: 225 },
+  28: { label: 'Parameter God',    packs: { legendary: 2 },                 crystals: 250 },
+  29: { label: 'Hallucination Free',packs: { mega: 5 },                     crystals: 275 },
+  30: { label: 'Grand Master',     packs: { legendary: 3, mythic_pack: 2 }, crystals: 500 },
 };
 
 // ── Type effectiveness chart ─────────────────────────────────────────────────

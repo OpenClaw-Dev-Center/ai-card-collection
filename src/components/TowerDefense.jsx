@@ -17,17 +17,19 @@ const RARITY_ORDER = { COMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5 };
 
 // ─── Enemy archetypes ─────────────────────────────────────────────────────────
 const ENEMY_TYPES = [
-  { name: 'Rogue GPT',     provider: 'GPT',      icon: '🤖', baseHp: 120, speed: 1, reward: 15 },
-  { name: 'Feral Llama',   provider: 'LLAMA',     icon: '🦙', baseHp: 160, speed: 1, reward: 20 },
-  { name: 'Ghost Gemini',  provider: 'GEMINI',    icon: '♊', baseHp: 100, speed: 2, reward: 25 },
-  { name: 'Rogue Claude',  provider: 'CLAUDE',    icon: '⚡', baseHp: 140, speed: 1, reward: 20 },
-  { name: 'Feral DeepSeek',provider: 'DEEPSEEK',  icon: '🔮', baseHp: 130, speed: 1, reward: 20 },
-  { name: 'Corrupt Mistral',provider: 'MISTRAL',  icon: '💨', baseHp: 110, speed: 2, reward: 22 },
+  { name: 'Rogue GPT',      provider: 'GPT',      icon: '🤖', baseHp: 70,  speed: 1, reward: 40  },
+  { name: 'Feral Llama',    provider: 'LLAMA',    icon: '🦙', baseHp: 90,  speed: 1, reward: 50  },
+  { name: 'Ghost Gemini',   provider: 'GEMINI',   icon: '♊', baseHp: 55,  speed: 2, reward: 60  },
+  { name: 'Rogue Claude',   provider: 'CLAUDE',   icon: '⚡', baseHp: 80,  speed: 1, reward: 50  },
+  { name: 'Feral DeepSeek', provider: 'DEEPSEEK', icon: '🔮', baseHp: 75,  speed: 1, reward: 50  },
+  { name: 'Corrupt Mistral',provider: 'MISTRAL',  icon: '💨', baseHp: 60,  speed: 2, reward: 55  },
 ];
 
 const BOSS_TYPES = [
-  { name: 'Omega GPT-X', provider: 'GPT',   icon: '👹', baseHp: 600, speed: 1, reward: 150, isBoss: true },
-  { name: 'Apex Claude', provider: 'CLAUDE',icon: '💀', baseHp: 700, speed: 1, reward: 200, isBoss: true },
+  { name: 'Omega GPT-X',    provider: 'GPT',      icon: '👹', baseHp: 350, speed: 1, reward: 400, isBoss: true },
+  { name: 'Apex Claude',    provider: 'CLAUDE',   icon: '💀', baseHp: 400, speed: 1, reward: 500, isBoss: true },
+  { name: 'Hyper DeepSeek', provider: 'DEEPSEEK', icon: '🔮', baseHp: 380, speed: 1, reward: 450, isBoss: true },
+  { name: 'Titan Gemini',   provider: 'GEMINI',   icon: '♊', baseHp: 320, speed: 2, reward: 480, isBoss: true },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ function makeEnemy(wave, lane) {
   const isBossWave = wave === 5 || wave === MAX_WAVES;
   const types = isBossWave ? BOSS_TYPES : ENEMY_TYPES;
   const t = types[Math.floor(Math.random() * types.length)];
-  const hpMult = 1 + (wave - 1) * 0.25 + (isBossWave ? 2 : 0);
+  const hpMult = 1 + (wave - 1) * 0.15 + (isBossWave ? 0.5 : 0);
   return {
     id: ++eidCounter,
     ...t,
@@ -255,7 +257,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
 
     // Wave clear check
     if (finalEnemies.length === 0 && s.waveEnemiesLeft === 0) {
-      const waveBonus = 100 + s.wave * 20;
+      const waveBonus = 300 + s.wave * 100;
       setCredits(c => c + waveBonus);
       addLog(`✅ Wave ${s.wave} cleared! +${waveBonus} credits`);
       if (s.wave >= MAX_WAVES) {
@@ -332,8 +334,8 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
   }
 
   const totalReward = wave >= MAX_WAVES
-    ? Math.floor(kills * 50 + 1000)
-    : Math.floor(kills * 50 + wave * 100);
+    ? Math.floor(kills * 100 + 5000)
+    : Math.floor(kills * 100 + wave * 500);
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto">
@@ -527,7 +529,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">XP Earned</span>
-                  <span className="font-black text-blue-400">+{phase === 'victory' ? 300 : Math.max(20, wave * 25)}</span>
+                  <span className="font-black text-blue-400">+{phase === 'victory' ? 1000 : Math.max(50, wave * 75)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Enemies Killed</span>
@@ -552,7 +554,7 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
                 <motion.button
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    onXpGain(phase === 'victory' ? 300 : Math.max(20, wave * 25));
+                    onXpGain(phase === 'victory' ? 1000 : Math.max(50, wave * 75));
                     onComplete(totalReward);
                   }}
                   className="flex-1 py-3 rounded-xl font-bold text-sm shadow-lg"

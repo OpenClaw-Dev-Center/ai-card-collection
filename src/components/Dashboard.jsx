@@ -16,7 +16,8 @@ import {
   TrendingUp as TrendingUpIcon,
   Lock as LockIcon,
   Star as StarIcon,
-  Castle as CastleIcon
+  Castle as CastleIcon,
+  BarChart2 as BarChart2Icon
 } from 'lucide-react';
 import { PACK_TYPES, xpForLevel, xpToNextLevel } from '../data/cards';
 
@@ -348,7 +349,7 @@ export function Dashboard({
         )}
 
         {/* Quick Actions */}
-        <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <section className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
           <motion.button
             whileHover={{ scale: 1.02 }}
             onClick={() => onNavigate('collection')}
@@ -404,7 +405,20 @@ export function Dashboard({
               <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-orange-400 group-hover:translate-x-1 transition-all" />
             </div>
             <h3 className="text-xl font-bold mb-1">Experience Road</h3>
-            <p className="text-gray-400 text-sm">Level rewards & unlocks</p>
+            <p className="text-gray-400 text-sm">Level rewards &amp; unlocks</p>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            onClick={() => onNavigate('type-chart')}
+            className="bg-gray-900/60 backdrop-blur rounded-2xl p-6 border border-gray-700/50 hover:border-purple-500/50 transition-all text-left group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <BarChart2Icon className="w-8 h-8 text-purple-400" />
+              <ChevronIcon className="w-6 h-6 text-gray-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+            </div>
+            <h3 className="text-xl font-bold mb-1">Type Chart</h3>
+            <p className="text-gray-400 text-sm">Model matchup guide</p>
           </motion.button>
         </section>
       </main>

@@ -172,67 +172,89 @@ export function TowerDefense({ user, onComplete, onBack, onXpGain = () => {} }) 
     const s = stateRef.current;
     if (s.paused) return;
 
-    let newEnemies = [...s.enemies];
-    let newTowers  = { ...s.towers };
+    // Deep-copy towers (they are { card, hp, maxHp } objects)
+    const newTowers = Object.fromEntries(
+      Object.entries(s.towers).map(([k, v]) => [k, { ...v }])
+    );
+    const newEnemies = s.enemies.map(e => ({ ...e }));
     let newLives   = s.lives;
     let newKills   = s.kills;
     let newCredits = s.credits;
-    let newWaveEnemiesLeft = s.waveEnemiesLeft;
     const msgs = [];
 
-    // Move enemies
-    newEnemies = newEnemies.map(e => ({ ...e, col: e.col - (e.speed > 1 && Math.random() > 0.5 ? 2 : 1) }));
-
-    // Enemies that reached base (col <= tower zone)
-    const escaped = newEnemies.filter(e => e.col < TOWER_COLS[TOWER_COLS.length - 1]);
-    if (escaped.length > 0) {
-      newLives -= escaped.length;
-      msgs.push(`💔 ${escaped.length} enemy reached base! Lives: ${newLives}`);
-    }
-    newEnemies = newEnemies.filter(e => e.col >= TOWER_COLS[TOWER_COLS.length - 1]);
-
-    // Tower attacks
-    for (const key of Object.keys(newTowers)) {
-      const [laneStr, colStr] = key.split('-');
-      const tLane = parseInt(laneStr), tCol = parseInt(colStr);
-      const card = newTowers[key];
-      if (!card) continue;
-      const range = towerRange(card);
-      const dmg   = towerDps(card);
-
-      for (let i = 0; i < newEnemies.length; i++) {
-        const e = newEnemies[i];
-        if (e.lane !== tLane) continue;
-        if (e.col > tCol + range) continue;
-        // Attack this enemy
-        const typeMult = getTypeMultiplier(card.provider, e.provider);
-        const finalDmg = Math.floor(dmg * typeMult);
-        newEnemies[i] = { ...newEnemies[i], hp: newEnemies[i].hp - finalDmg };
-        break; // one target per tower per tick
+    // Step 1: Move each enemy; stop adjacent when a tower blocks path
+    for (let i = 0; i < newEnemies.length; i++) {
+      const e = newEnemies[i];
+      const targetCol = e.col - e.speed;
+      // Find the closest (rightmost) tower the enemy would walk into
+      let blockKey = null, blockCol = -1;
+      for (let c = e.col - 1; c >= Math.max(0, targetCol); c--) {
+        if (newTowers[`${e.lane}-${c}`]) { blockCol = c; blockKey = `${e.lane}-${c}`; break; }
+      }
+      if (blockKey !== null) {
+        newEnemies[i].col = blockCol + 1;                      // stop adjacent
+        const eDmg = Math.max(5, Math.ceil(e.maxHp / 15));
+        newTowers[blockKey].hp -= eDmg;                        // enemy attacks tower
+      } else {
+        newEnemies[i].col = targetCol;
       }
     }
 
-    // Remove dead enemies
+    // Step 2: Each tower fires at the closest (frontmost) enemy in range
+    for (const [key, tower] of Object.entries(newTowers)) {
+      const [ls, cs] = key.split('-');
+      const tLane = parseInt(ls), tCol = parseInt(cs);
+      const range = towerRange(tower.card);
+      const dmg   = towerDps(tower.card);
+      const targets = newEnemies
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => e.lane === tLane && e.col > tCol && e.col <= tCol + range)
+        .sort((a, b) => a.e.col - b.e.col);
+      if (targets.length > 0) {
+        const { i: idx } = targets[0];
+        const mult = getTypeMultiplier(tower.card.provider, newEnemies[idx].provider);
+        newEnemies[idx].hp -= Math.floor(dmg * mult);
+      }
+    }
+
+    // Step 3: Remove destroyed towers
+    for (const key of Object.keys(newTowers)) {
+      if (newTowers[key].hp <= 0) {
+        msgs.push(`💥 Tower in lane ${parseInt(key.split('-')[0]) + 1} was destroyed!`);
+        delete newTowers[key];
+      }
+    }
+
+    // Step 4: Collect dead enemies
     const dead = newEnemies.filter(e => e.hp <= 0);
     if (dead.length > 0) {
       newKills += dead.length;
       const earned = dead.reduce((sum, e) => sum + e.reward, 0);
       newCredits += earned;
-      newEnemies = newEnemies.filter(e => e.hp > 0);
-      if (dead.some(e => e.isBoss)) msgs.push(`💥 BOSS DEFEATED! +${dead.reduce((s,e) => s+e.reward, 0)} credits`);
-      else msgs.push(`💀 ${dead.length} ${dead.length > 1 ? 'enemies' : 'enemy'} destroyed! +${dead.reduce((s,e) => s+e.reward, 0)} credits`);
+      const bossKills = dead.filter(e => e.isBoss);
+      if (bossKills.length > 0) msgs.push(`🏆 BOSS SLAIN! +${bossKills.reduce((s, e) => s + e.reward, 0)} credits`);
+      const normalKills = dead.filter(e => !e.isBoss);
+      if (normalKills.length > 0) msgs.push(`💀 ${normalKills.length} ${normalKills.length > 1 ? 'enemies' : 'enemy'} destroyed! +${normalKills.reduce((s, e) => s + e.reward, 0)} credits`);
     }
+    const aliveEnemies = newEnemies.filter(e => e.hp > 0);
+
+    // Step 5: Enemies that escaped past the base (col < 0)
+    const escaped = aliveEnemies.filter(e => e.col < 0);
+    if (escaped.length > 0) {
+      newLives -= escaped.length;
+      msgs.push(`💔 ${escaped.length} enemy breached base! Lives: ${newLives}`);
+    }
+    const finalEnemies = aliveEnemies.filter(e => e.col >= 0);
 
     msgs.forEach(addLog);
-
-    // Apply state
-    setEnemies(newEnemies);
+    setEnemies(finalEnemies);
+    setTowers(newTowers);
     setLives(newLives);
     setKills(newKills);
     setCredits(newCredits);
 
     // Wave clear check
-    if (newEnemies.length === 0 && newWaveEnemiesLeft === 0) {
+    if (finalEnemies.length === 0 && s.waveEnemiesLeft === 0) {
       const waveBonus = 100 + s.wave * 20;
       setCredits(c => c + waveBonus);
       addLog(`✅ Wave ${s.wave} cleared! +${waveBonus} credits`);

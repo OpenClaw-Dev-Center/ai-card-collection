@@ -21,6 +21,7 @@ import { DeckBattle } from './components/DeckBattle';
 import { TowerDefense } from './components/TowerDefense';
 import { Leaderboard } from './components/Leaderboard';
 import { ExperienceRoad } from './components/ExperienceRoad';
+import { TypeChart } from './components/TypeChart';
 import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
 import { api } from './services/api';
@@ -280,6 +281,8 @@ function App() {
             onBack={() => setView('dashboard')}
           />
         );
+      case 'type-chart':
+        return <TypeChart onBack={() => setView('dashboard')} />;
       case 'pack-opening':
         return openingPack && (
           <PackOpening

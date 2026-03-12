@@ -71,14 +71,14 @@ BEGIN
   INSERT INTO leaderboard_entries (user_id, wins, losses, total_battles, win_rate, playtime_hours)
   VALUES (
     NEW.user_id,
-    NEW.stats->>'wins',
-    NEW.stats->>'losses',
-    NEW.stats->>'totalBattles',
-    CASE WHEN (NEW.stats->>'totalBattles')::INTEGER > 0
+    COALESCE((NEW.stats->>'wins')::INTEGER, 0),
+    COALESCE((NEW.stats->>'losses')::INTEGER, 0),
+    COALESCE((NEW.stats->>'totalBattles')::INTEGER, 0),
+    CASE WHEN COALESCE((NEW.stats->>'totalBattles')::INTEGER, 0) > 0
       THEN ((NEW.stats->>'wins')::DECIMAL / (NEW.stats->>'totalBattles')::DECIMAL * 100)
       ELSE 0.0
     END,
-    (NEW.stats->>'playtimeHours')::DECIMAL
+    COALESCE((NEW.stats->>'playtimeHours')::DECIMAL, 0.0)
   )
   ON CONFLICT (user_id) DO UPDATE SET
     wins = EXCLUDED.wins,

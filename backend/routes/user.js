@@ -35,6 +35,7 @@ function buildBossRaidState(now = new Date()) {
     usedCardIds: [],
     defeated: false,
     rewardGranted: false,
+    consolationGranted: false,
   };
 }
 
@@ -43,8 +44,54 @@ function normalizeBossRaid(stats, now = new Date()) {
   const currentPeriod = getHourPeriodStart(now);
   if (!normalized.bossRaid || normalized.bossRaid.periodStart !== currentPeriod) {
     normalized.bossRaid = buildBossRaidState(now);
+  } else if (normalized.bossRaid.consolationGranted === undefined) {
+    // Backfill field for users created before consolation payouts existed.
+    normalized.bossRaid.consolationGranted = false;
   }
   return normalized;
+}
+
+function getConsolationRewardsForExhaustedRaid(raid) {
+  if (!raid || raid.defeated || raid.consolationGranted) return null;
+  if (raid.attemptsUsed < raid.maxAttempts) return null;
+
+  const maxHp = Math.max(1, Number(raid.maxHp || 1));
+  const hp = Math.max(0, Number(raid.hp || 0));
+  const damageDone = Math.max(0, maxHp - hp);
+  const ratio = damageDone / maxHp;
+
+  // Partial payout for effort: significantly lower than full boss kill rewards.
+  const credits = Math.floor(600 + ratio * 3400);          // 600..4000
+  const prestigeCrystals = Math.floor(10 + ratio * 70);    // 10..80
+  const packs = {};
+  if (ratio >= 0.9) {
+    packs.elite_pack = 1;
+    packs.mega = 1;
+  } else if (ratio >= 0.75) {
+    packs.mega = 1;
+  } else if (ratio >= 0.5) {
+    packs.premium = 1;
+  } else if (ratio >= 0.25) {
+    packs.basic = 1;
+  }
+
+  return {
+    credits,
+    prestigeCrystals,
+    packs,
+    damageDone,
+    damageRatio: ratio,
+  };
+}
+
+function applyRewardsToProfileState({ credits, prestigeCrystals, packs }, rewards) {
+  let nextCredits = Number(credits || 0) + Number(rewards?.credits || 0);
+  let nextCrystals = Number(prestigeCrystals || 0) + Number(rewards?.prestigeCrystals || 0);
+  const nextPacks = { ...(packs || {}) };
+  for (const [k, v] of Object.entries(rewards?.packs || {})) {
+    nextPacks[k] = (nextPacks[k] || 0) + v;
+  }
+  return { nextCredits, nextCrystals, nextPacks };
 }
 
 function getCardByIdFromCollection(collection, id) {
@@ -544,18 +591,33 @@ router.get('/:userId/boss/current', authenticate, async (req, res) => {
 
     const row = profileResult.rows[0];
     const normalizedStats = normalizeBossRaid(row.stats || {}, new Date());
+    let credits = Number(row.credits || 0);
+    let prestigeCrystals = Number(row.prestige_crystals || 0);
+    let packs = { ...(row.packs || {}) };
+    let retroRewards = null;
+
+    const consolation = getConsolationRewardsForExhaustedRaid(normalizedStats.bossRaid);
+    if (consolation) {
+      retroRewards = consolation;
+      const applied = applyRewardsToProfileState({ credits, prestigeCrystals, packs }, consolation);
+      credits = applied.nextCredits;
+      prestigeCrystals = applied.nextCrystals;
+      packs = applied.nextPacks;
+      normalizedStats.bossRaid.consolationGranted = true;
+    }
 
     await query(
-      'UPDATE user_profiles SET stats = $1::jsonb, updated_at = NOW() WHERE user_id = $2',
-      [JSON.stringify(normalizedStats), userId]
+      'UPDATE user_profiles SET credits = $1, prestige_crystals = $2, packs = $3::jsonb, stats = $4::jsonb, updated_at = NOW() WHERE user_id = $5',
+      [credits, prestigeCrystals, JSON.stringify(packs), JSON.stringify(normalizedStats), userId]
     );
 
     return res.json({
       bossRaid: normalizedStats.bossRaid,
+      retroRewards,
       profile: {
-        credits: row.credits,
-        prestigeCrystals: row.prestige_crystals,
-        packs: row.packs,
+        credits,
+        prestigeCrystals,
+        packs,
         collection: row.collection,
         deckPresets: row.deck_presets,
         stats: normalizedStats,
@@ -629,6 +691,7 @@ router.post('/:userId/boss/attack', authenticate, async (req, res) => {
       credits: 0,
       prestigeCrystals: 0,
       packs: {},
+      type: null,
     };
 
     if (raid.defeated && !raid.rewardGranted) {
@@ -647,7 +710,22 @@ router.post('/:userId/boss/attack', authenticate, async (req, res) => {
         packs[k] = (packs[k] || 0) + v;
       }
       raid.rewardGranted = true;
+      rewards.type = 'defeat';
       normalizedStats.bossRaidWins = (normalizedStats.bossRaidWins || 0) + 1;
+    } else {
+      const consolation = getConsolationRewardsForExhaustedRaid(raid);
+      if (consolation) {
+        rewards.credits = consolation.credits;
+        rewards.prestigeCrystals = consolation.prestigeCrystals;
+        rewards.packs = consolation.packs;
+        rewards.type = 'exhausted';
+
+        const applied = applyRewardsToProfileState({ credits, prestigeCrystals, packs }, consolation);
+        credits = applied.nextCredits;
+        prestigeCrystals = applied.nextCrystals;
+        Object.assign(packs, applied.nextPacks);
+        raid.consolationGranted = true;
+      }
     }
 
     normalizedStats.bossRaid = raid;

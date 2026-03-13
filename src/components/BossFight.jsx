@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Crown, Shield, Swords, TimerReset, Zap, Sparkles, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Crown, Shield, Swords, TimerReset, Zap, Sparkles, AlertTriangle, Filter, SortAsc, Brain, Sword, ShieldCheck, Flame } from 'lucide-react';
 import { api } from '../services/api';
 import { PROVIDERS, RARITIES } from '../data/cards';
 
 const MAX_DECK = 5;
+const MAX_TACTIC_TURNS = 16;
+const ACTIONS = [
+  { id: 'strike', label: 'Strike', icon: Sword, color: 'from-red-600 to-orange-500', cost: 20, desc: 'Power hit' },
+  { id: 'focus', label: 'Focus', icon: Brain, color: 'from-violet-600 to-purple-500', cost: 15, desc: 'Build burst stacks' },
+  { id: 'guard', label: 'Guard', icon: ShieldCheck, color: 'from-cyan-600 to-blue-500', cost: 10, desc: 'Stabilize combo' },
+  { id: 'burst', label: 'Burst', icon: Flame, color: 'from-yellow-500 to-amber-400', cost: 35, desc: 'Huge payoff' },
+];
 
 function msToNextHour() {
   const now = new Date();
@@ -35,6 +42,19 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
   const [countdown, setCountdown] = useState(msToNextHour());
+  const [phase, setPhase] = useState('deck'); // deck | combat
+
+  const [filterProvider, setFilterProvider] = useState('ALL');
+  const [filterRarity, setFilterRarity] = useState('ALL');
+  const [sortBy, setSortBy] = useState('stats');
+
+  const [turn, setTurn] = useState(0);
+  const [energy, setEnergy] = useState(100);
+  const [focusStacks, setFocusStacks] = useState(0);
+  const [previewHp, setPreviewHp] = useState(0);
+  const [actionLog, setActionLog] = useState([]);
+  const [combatFeed, setCombatFeed] = useState([]);
+  const [floating, setFloating] = useState([]);
 
   useEffect(() => {
     const t = setInterval(() => setCountdown(msToNextHour()), 1000);
@@ -69,8 +89,24 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
   const usedIds = useMemo(() => new Set(bossRaid?.usedCardIds || []), [bossRaid]);
 
   const availableCards = useMemo(() => {
-    return (collection || []).filter(c => !usedIds.has(c.id));
-  }, [collection, usedIds]);
+    const filtered = (collection || []).filter(c => !usedIds.has(c.id));
+    const byProvider = filterProvider === 'ALL' ? filtered : filtered.filter(c => c.provider === filterProvider);
+    const byRarity = filterRarity === 'ALL' ? byProvider : byProvider.filter(c => c.rarity === filterRarity);
+    const sorted = [...byRarity];
+    const rarityRank = { COMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5 };
+    sorted.sort((a, b) => {
+      const aTotal = (a.stats?.power || 0) + (a.stats?.speed || 0) + (a.stats?.intelligence || 0) + (a.stats?.creativity || 0);
+      const bTotal = (b.stats?.power || 0) + (b.stats?.speed || 0) + (b.stats?.intelligence || 0) + (b.stats?.creativity || 0);
+      if (sortBy === 'stats') return bTotal - aTotal;
+      if (sortBy === 'rarity') return (rarityRank[b.rarity] || 0) - (rarityRank[a.rarity] || 0);
+      if (sortBy === 'power') return (b.stats?.power || 0) - (a.stats?.power || 0);
+      if (sortBy === 'speed') return (b.stats?.speed || 0) - (a.stats?.speed || 0);
+      if (sortBy === 'intelligence') return (b.stats?.intelligence || 0) - (a.stats?.intelligence || 0);
+      if (sortBy === 'creativity') return (b.stats?.creativity || 0) - (a.stats?.creativity || 0);
+      return String(a.name).localeCompare(String(b.name));
+    });
+    return sorted;
+  }, [collection, usedIds, filterProvider, filterRarity, sortBy]);
 
   const selectedCards = useMemo(() => {
     const byId = new Map((collection || []).map(c => [c.id, c]));
@@ -87,15 +123,72 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
     setSelectedIds(prev => [...prev, cardId]);
   }
 
+  function addFloat(value) {
+    const id = Date.now() + Math.random();
+    setFloating(prev => [...prev, { id, value }]);
+    setTimeout(() => setFloating(prev => prev.filter(f => f.id !== id)), 800);
+  }
+
+  function beginCombat() {
+    if (selectedIds.length < 2) return;
+    setPhase('combat');
+    setTurn(0);
+    setEnergy(100);
+    setFocusStacks(0);
+    setPreviewHp(bossRaid?.hp || 0);
+    setActionLog([]);
+    setCombatFeed(['⚔️ Tactical assault started. Build your sequence carefully.']);
+  }
+
+  function applyAction(actionId) {
+    if (turn >= MAX_TACTIC_TURNS || previewHp <= 0) return;
+    const action = ACTIONS.find(a => a.id === actionId);
+    if (!action) return;
+    if (energy < action.cost) {
+      setCombatFeed(prev => [...prev.slice(-8), `❌ Not enough energy for ${action.label}`]);
+      return;
+    }
+
+    const activeCard = selectedCards[turn % selectedCards.length];
+    const stats = activeCard?.stats || {};
+    let dmg = 0;
+    let nextFocus = focusStacks;
+
+    if (actionId === 'focus') {
+      nextFocus = Math.min(3, focusStacks + 1);
+      dmg = Math.floor((stats.intelligence || 70) * 0.2 + (stats.creativity || 70) * 0.12);
+    } else if (actionId === 'guard') {
+      dmg = Math.floor((stats.speed || 70) * 0.2);
+    } else if (actionId === 'strike') {
+      dmg = Math.floor((stats.power || 70) * 0.95 + focusStacks * 20);
+      nextFocus = Math.max(0, focusStacks - 1);
+    } else if (actionId === 'burst') {
+      dmg = Math.floor((stats.power || 70) * 0.7 + (stats.creativity || 70) * 0.6 + focusStacks * 26);
+      nextFocus = Math.max(0, focusStacks - 2);
+    }
+
+    if ((bossRaid?.vulnerable || []).includes(activeCard.provider)) dmg = Math.floor(dmg * 1.12);
+    if ((bossRaid?.resistant || []).includes(activeCard.provider)) dmg = Math.floor(dmg * 0.86);
+
+    setFocusStacks(nextFocus);
+    setEnergy(prev => Math.min(100, prev - action.cost + 14));
+    setTurn(t => t + 1);
+    setActionLog(prev => [...prev, actionId]);
+    setPreviewHp(prev => Math.max(0, prev - dmg));
+    addFloat(dmg);
+    setCombatFeed(prev => [...prev.slice(-8), `${activeCard.name} used ${action.label} for ${dmg} dmg`]);
+  }
+
   async function attack() {
     if (!user?.id || selectedIds.length < 2 || !bossRaid || bossRaid.defeated) return;
     setAttacking(true);
     setError(null);
     try {
-      const res = await api.attackBoss(user.id, selectedIds);
+      const res = await api.attackBoss(user.id, selectedIds, actionLog);
       setReport(res.attemptReport);
       setBossRaid(res.bossRaid);
       setSelectedIds([]);
+      setPhase('deck');
       if (res.profile) {
         setCollection(res.profile.collection || []);
         onProfileSync(res.profile);
@@ -194,11 +287,35 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
             )}
           </motion.div>
 
-          <div className="rounded-2xl bg-gray-900/60 border border-gray-700/50 p-4">
+            <div className="rounded-2xl bg-gray-900/60 border border-gray-700/50 p-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-bold text-gray-200 flex items-center gap-2"><Swords className="w-4 h-4" /> Select Raid Deck ({selectedIds.length}/{MAX_DECK})</h3>
               <div className="text-xs text-gray-500">Cards used in previous attempts are locked</div>
             </div>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                <div className="flex items-center gap-1 text-xs text-gray-400"><Filter className="w-3 h-3" />
+                  <select value={filterProvider} onChange={e => setFilterProvider(e.target.value)} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                    <option value="ALL">All Providers</option>
+                    {Object.keys(PROVIDERS).map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                  <option value="ALL">All Rarities</option>
+                  {Object.keys(RARITIES).map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <div className="flex items-center gap-1 text-xs text-gray-400"><SortAsc className="w-3 h-3" />
+                  <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                    <option value="stats">Stats (default)</option>
+                    <option value="rarity">Rarity</option>
+                    <option value="power">Power</option>
+                    <option value="speed">Speed</option>
+                    <option value="intelligence">Intelligence</option>
+                    <option value="creativity">Creativity</option>
+                    <option value="name">Name</option>
+                  </select>
+                </div>
+              </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[50vh] overflow-y-auto pr-1">
               {availableCards.map(card => {
@@ -238,14 +355,84 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
                 whileHover={{ scale: bossRaid.defeated ? 1 : 1.02 }}
                 whileTap={{ scale: bossRaid.defeated ? 1 : 0.98 }}
                 disabled={attacking || bossRaid.defeated || attemptsLeft <= 0 || selectedIds.length < 2}
-                onClick={attack}
+                onClick={beginCombat}
                 className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${attacking || bossRaid.defeated || attemptsLeft <= 0 || selectedIds.length < 2 ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-600 via-orange-500 to-yellow-500 text-black'}`}
               >
                 <Zap className="w-4 h-4" />
-                {attacking ? 'Attacking...' : `Attack Boss (${selectedIds.length} cards)`}
+                Start Tactical Assault
               </motion.button>
             </div>
           </div>
+
+          <AnimatePresence>
+            {phase === 'combat' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl bg-black/50 border border-red-600/40 p-4"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-black text-red-300">⚔️ Live Assault</h3>
+                  <div className="text-xs text-gray-400">Turn {turn}/{MAX_TACTIC_TURNS} • Energy {energy} • Focus {focusStacks}</div>
+                </div>
+
+                <div className="relative mb-3 p-3 rounded-xl bg-gray-900/70 border border-gray-700/50 overflow-hidden">
+                  <div className="text-xs text-gray-400 mb-1">Simulated boss pressure</div>
+                  <div className="h-3 rounded-full bg-gray-800 overflow-hidden">
+                    <motion.div className="h-full" style={{ background: hpColor(Math.round((previewHp / Math.max(1, bossRaid.hp)) * 100)) }} animate={{ width: `${Math.max(0, Math.round((previewHp / Math.max(1, bossRaid.hp)) * 100))}%` }} />
+                  </div>
+                  <div className="text-xs text-gray-300 mt-1">{previewHp.toLocaleString()} / {bossRaid.hp.toLocaleString()} (simulated)</div>
+                  <div className="absolute right-3 top-2">
+                    <AnimatePresence>
+                      {floating.map(f => (
+                        <motion.div
+                          key={f.id}
+                          initial={{ y: 0, opacity: 1, scale: 1 }}
+                          animate={{ y: -30, opacity: 0, scale: 1.2 }}
+                          exit={{ opacity: 0 }}
+                          className="text-sm font-black text-yellow-300"
+                        >
+                          -{f.value}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  {ACTIONS.map(a => {
+                    const Icon = a.icon;
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => applyAction(a.id)}
+                        disabled={attacking || energy < a.cost || turn >= MAX_TACTIC_TURNS || previewHp <= 0}
+                        className={`p-2 rounded-lg bg-gradient-to-r ${a.color} text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed`}
+                      >
+                        <div className="flex items-center justify-center gap-1"><Icon className="w-4 h-4" /> {a.label}</div>
+                        <div className="text-[10px] opacity-80">{a.desc} · {a.cost}⚡</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="max-h-28 overflow-y-auto text-xs text-gray-300 space-y-1 mb-3 pr-1">
+                  {combatFeed.map((line, i) => <div key={i}>{line}</div>)}
+                </div>
+
+                <div className="flex gap-2">
+                  <button onClick={() => setPhase('deck')} disabled={attacking} className="px-3 py-2 rounded-lg bg-gray-800 text-gray-300 text-sm">Back to Deck</button>
+                  <button
+                    onClick={attack}
+                    disabled={attacking || actionLog.length === 0}
+                    className="flex-1 py-2 rounded-lg font-bold text-sm bg-gradient-to-r from-emerald-500 to-cyan-500 text-black disabled:opacity-40"
+                  >
+                    {attacking ? 'Resolving...' : `Resolve Assault (${actionLog.length} actions)`}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="space-y-4">

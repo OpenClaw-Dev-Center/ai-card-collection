@@ -51,7 +51,7 @@ function getCardByIdFromCollection(collection, id) {
   return collection.find(c => c.id === id);
 }
 
-function strategicBossDamage(deckCards, raidState) {
+function strategicBossDamage(deckCards, raidState, actions = []) {
   const providerCounts = {};
   deckCards.forEach(c => {
     providerCounts[c.provider] = (providerCounts[c.provider] || 0) + 1;
@@ -84,7 +84,7 @@ function strategicBossDamage(deckCards, raidState) {
     tacticalNotes.push(`Boss enrage x${enrageMult.toFixed(2)} due to prior attempts`);
   }
 
-  let total = 0;
+  let baseTotal = 0;
   const perCard = [];
   const providerSeen = {};
 
@@ -136,7 +136,7 @@ function strategicBossDamage(deckCards, raidState) {
 
     const final = Math.floor(dmg * providerMult * duplicatePenalty * mechanicMult * teamMult * enrageMult);
     const clamped = Math.max(40, final);
-    total += clamped;
+    baseTotal += clamped;
     perCard.push({
       cardId: card.id,
       name: card.name,
@@ -145,11 +145,84 @@ function strategicBossDamage(deckCards, raidState) {
     });
   });
 
+  const normalizedActions = Array.isArray(actions)
+    ? actions.map(a => String(a).toLowerCase()).filter(a => ['strike', 'focus', 'guard', 'burst'].includes(a)).slice(0, 16)
+    : [];
+
+  let tacticalTotal = 0;
+  let energy = 100;
+  let focus = 0;
+  let consecutivePenalty = 1;
+  let lastAction = null;
+  let guards = 0;
+
+  normalizedActions.forEach((action, turn) => {
+    const card = deckCards[turn % deckCards.length];
+    const stats = card?.stats || {};
+    const power = stats.power || 0;
+    const speed = stats.speed || 0;
+    const intelligence = stats.intelligence || 0;
+    const creativity = stats.creativity || 0;
+
+    const cost = action === 'strike' ? 20 : action === 'focus' ? 15 : action === 'guard' ? 10 : 35;
+    if (energy < cost) {
+      energy = Math.min(100, energy + 14);
+      return;
+    }
+    energy = Math.max(0, energy - cost);
+
+    if (lastAction === action) consecutivePenalty = Math.max(0.7, consecutivePenalty - 0.08);
+    else consecutivePenalty = Math.min(1, consecutivePenalty + 0.05);
+    lastAction = action;
+
+    let turnDmg = 0;
+    if (action === 'focus') {
+      focus = Math.min(3, focus + 1);
+      turnDmg = intelligence * 0.22 + creativity * 0.15;
+    } else if (action === 'guard') {
+      guards += 1;
+      turnDmg = speed * 0.2 + intelligence * 0.12;
+    } else if (action === 'strike') {
+      turnDmg = power * 0.95 + speed * 0.2 + focus * 22;
+      focus = Math.max(0, focus - 1);
+    } else if (action === 'burst') {
+      turnDmg = power * 0.82 + creativity * 0.62 + focus * 28;
+      focus = Math.max(0, focus - 2);
+    }
+
+    if ((raidState.vulnerable || []).includes(card.provider)) turnDmg *= 1.16;
+    if ((raidState.resistant || []).includes(card.provider)) turnDmg *= 0.84;
+
+    if (raidState.mechanic === 'chrono_lock' && turn < 2 && speed < 88) turnDmg *= 0.76;
+    if (raidState.mechanic === 'reflective_aegis' && action === 'burst' && power > intelligence) turnDmg *= 0.72;
+    if (raidState.mechanic === 'entropy_field' && uniqueProviders < 3) turnDmg *= 0.75;
+    if (raidState.mechanic === 'quantum_veto' && turn % 2 === 1 && creativity < 90) turnDmg *= 0.78;
+    if (raidState.mechanic === 'hunter_protocol' && (RARITY_ORDER[card.rarity] || 1) >= 4 && action === 'burst') turnDmg *= 0.8;
+    if (raidState.mechanic === 'adaptive_matrix' && providerCounts[card.provider] > 1) turnDmg *= Math.max(0.7, 1 - (providerCounts[card.provider] - 1) * 0.1);
+
+    turnDmg *= consecutivePenalty;
+    tacticalTotal += Math.max(15, turnDmg);
+    energy = Math.min(100, energy + 14);
+  });
+
+  if (normalizedActions.length >= 10) {
+    tacticalNotes.push('Extended tactical chain: +8% combat contribution');
+    tacticalTotal *= 1.08;
+  }
+  if (guards >= 2) {
+    tacticalNotes.push('Defensive pacing stabilized the assault');
+    tacticalTotal *= 1.05;
+  }
+
+  const actionContribution = normalizedActions.length > 0 ? tacticalTotal : baseTotal * 0.55;
+  let total = baseTotal * 0.62 + actionContribution * 0.48;
+
   // Armor applies after strategic calculations.
   total = Math.max(120, Math.floor(total * (1 - (raidState.armor || 0.2))));
   if ((raidState.armor || 0) > 0) tacticalNotes.push(`Boss armor reduced total damage by ${Math.round((raidState.armor || 0) * 100)}%`);
+  if (normalizedActions.length > 0) tacticalNotes.push(`Action sequence analyzed (${normalizedActions.length} turns)`);
 
-  return { totalDamage: total, perCard, tacticalNotes };
+  return { totalDamage: total, perCard, tacticalNotes, normalizedActions };
 }
 
 const router = Router();
@@ -503,6 +576,7 @@ router.post('/:userId/boss/attack', authenticate, async (req, res) => {
     }
 
     const deckCardIdsRaw = Array.isArray(req.body.deckCardIds) ? req.body.deckCardIds : [];
+    const actions = Array.isArray(req.body.actions) ? req.body.actions : [];
     const deckCardIds = [...new Set(deckCardIdsRaw.map(String))];
     if (deckCardIds.length < 2 || deckCardIds.length > 5) {
       return res.status(400).json({ error: 'Deck must contain between 2 and 5 unique cards' });
@@ -540,7 +614,7 @@ router.post('/:userId/boss/attack', authenticate, async (req, res) => {
     }
 
     const hpBefore = raid.hp;
-    const sim = strategicBossDamage(deckCards, raid);
+    const sim = strategicBossDamage(deckCards, raid, actions);
     const hpAfter = Math.max(0, hpBefore - sim.totalDamage);
 
     raid.hp = hpAfter;
@@ -599,6 +673,7 @@ router.post('/:userId/boss/attack', authenticate, async (req, res) => {
         consumedCardIds: deckCardIds,
         perCard: sim.perCard,
         tacticalNotes: sim.tacticalNotes,
+        actionsUsed: sim.normalizedActions,
       },
       bossRaid: raid,
       rewards,

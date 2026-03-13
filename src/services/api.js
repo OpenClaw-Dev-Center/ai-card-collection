@@ -91,10 +91,10 @@ class ApiClient {
     return this.request(`/users/${userId}/boss/current`);
   }
 
-  async attackBoss(userId, deckCardIds) {
+  async attackBoss(userId, deckCardIds, actions = []) {
     return this.request(`/users/${userId}/boss/attack`, {
       method: 'POST',
-      body: JSON.stringify({ deckCardIds })
+      body: JSON.stringify({ deckCardIds, actions })
     });
   }
 

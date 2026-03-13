@@ -55,6 +55,7 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
   const [actionLog, setActionLog] = useState([]);
   const [combatFeed, setCombatFeed] = useState([]);
   const [floating, setFloating] = useState([]);
+  const [latestRewards, setLatestRewards] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => setCountdown(msToNextHour()), 1000);
@@ -72,6 +73,9 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
         if (!mounted) return;
         setBossRaid(res.bossRaid);
         setCollection(res.profile?.collection || []);
+        if (res.retroRewards) {
+          setLatestRewards({ ...res.retroRewards, type: 'retro_exhausted' });
+        }
         onProfileSync(res.profile);
       } catch (e) {
         if (!mounted) return;
@@ -187,6 +191,9 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
       const res = await api.attackBoss(user.id, selectedIds, actionLog);
       setReport(res.attemptReport);
       setBossRaid(res.bossRaid);
+      if (res.rewards && ((res.rewards.credits || 0) > 0 || (res.rewards.prestigeCrystals || 0) > 0 || Object.keys(res.rewards.packs || {}).length > 0)) {
+        setLatestRewards(res.rewards);
+      }
       setSelectedIds([]);
       setPhase('deck');
       if (res.profile) {
@@ -211,8 +218,38 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
   const hpPct = Math.max(0, Math.round((bossRaid.hp / bossRaid.maxHp) * 100));
   const attemptsLeft = Math.max(0, bossRaid.maxAttempts - bossRaid.attemptsUsed);
 
+  const rewardRows = latestRewards ? Object.entries(latestRewards.packs || {}).filter(([, v]) => Number(v) > 0) : [];
+
   return (
     <div className="min-h-screen p-4 max-w-6xl mx-auto">
+      <AnimatePresence>
+        {latestRewards && (
+          <motion.div
+            initial={{ opacity: 0, y: -12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-16 right-4 z-40 w-[320px] rounded-2xl border border-yellow-500/40 bg-gradient-to-br from-yellow-900/40 to-orange-900/30 backdrop-blur p-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-black text-yellow-300">🎁 Rewards Earned</div>
+              <button onClick={() => setLatestRewards(null)} className="text-xs text-gray-400 hover:text-white">Dismiss</button>
+            </div>
+            <div className="text-xs text-gray-300 mb-2">
+              {latestRewards.type === 'defeat' && 'Boss defeated. Legendary rewards granted.'}
+              {latestRewards.type === 'exhausted' && 'Attempts exhausted. Damage-based consolation rewards granted.'}
+              {latestRewards.type === 'retro_exhausted' && 'Retroactive damage-based rewards were granted for your exhausted attempts.'}
+            </div>
+            <div className="space-y-1 text-sm">
+              {(latestRewards.credits || 0) > 0 && <div className="text-yellow-300 font-bold">💰 +{latestRewards.credits.toLocaleString()} credits</div>}
+              {(latestRewards.prestigeCrystals || 0) > 0 && <div className="text-indigo-300 font-bold">💎 +{latestRewards.prestigeCrystals.toLocaleString()} crystals</div>}
+              {Object.entries(latestRewards.packs || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                <div key={k} className="text-green-300 font-bold">📦 +{v} {k}</div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-2 text-gray-300 hover:text-white">
           <ArrowLeft className="w-5 h-5" /> Back
@@ -492,8 +529,28 @@ export function BossFight({ user, onBack, onProfileSync = () => {} }) {
               <div>• Prestige crystals</div>
               <div>• Elite + Mythic packs</div>
               <div>• Better rewards for fewer attempts</div>
+              <div>• If you fail, exhausted attempts now grant damage-based rewards</div>
             </div>
           </div>
+
+          {latestRewards && (
+            <div className="rounded-2xl bg-gray-900/70 border border-yellow-700/30 p-4">
+              <h3 className="font-bold text-gray-200 mb-2">Latest Reward Breakdown</h3>
+              <div className="text-xs text-gray-400 mb-2">
+                {latestRewards.type === 'defeat' ? 'Boss kill rewards' : 'Damage-based non-kill payout'}
+              </div>
+              <div className="space-y-1 text-sm">
+                {(latestRewards.credits || 0) > 0 && <div className="text-yellow-300">💰 +{latestRewards.credits.toLocaleString()}</div>}
+                {(latestRewards.prestigeCrystals || 0) > 0 && <div className="text-indigo-300">💎 +{latestRewards.prestigeCrystals.toLocaleString()}</div>}
+                {rewardRows.map(([k, v]) => (
+                  <div key={k} className="text-emerald-300">📦 +{v} {k}</div>
+                ))}
+                {rewardRows.length === 0 && (latestRewards.credits || 0) === 0 && (latestRewards.prestigeCrystals || 0) === 0 && (
+                  <div className="text-gray-500">No reward earned this time.</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

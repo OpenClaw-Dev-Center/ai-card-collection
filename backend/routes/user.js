@@ -60,11 +60,15 @@ function getConsolationRewardsForExhaustedRaid(raid) {
   const damageDone = Math.max(0, maxHp - hp);
   const ratio = damageDone / maxHp;
 
-  // Partial payout for effort: significantly lower than full boss kill rewards.
-  const credits = Math.floor(600 + ratio * 3400);          // 600..4000
-  const prestigeCrystals = Math.floor(10 + ratio * 70);    // 10..80
+  // Partial payout for effort: meaningful at high damage, but still below boss-kill rewards.
+  const credits = Math.floor(1200 + ratio * 7800);          // 1200..9000
+  const prestigeCrystals = Math.floor(20 + ratio * 120);    // 20..140
   const packs = {};
-  if (ratio >= 0.9) {
+  if (ratio >= 0.95) {
+    packs.elite_pack = 1;
+    packs.legendary = 1;
+    packs.mega = 1;
+  } else if (ratio >= 0.9) {
     packs.elite_pack = 1;
     packs.mega = 1;
   } else if (ratio >= 0.75) {

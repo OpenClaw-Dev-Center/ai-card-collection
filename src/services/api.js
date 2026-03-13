@@ -87,6 +87,17 @@ class ApiClient {
     });
   }
 
+  async getCurrentBoss(userId) {
+    return this.request(`/users/${userId}/boss/current`);
+  }
+
+  async attackBoss(userId, deckCardIds) {
+    return this.request(`/users/${userId}/boss/attack`, {
+      method: 'POST',
+      body: JSON.stringify({ deckCardIds })
+    });
+  }
+
   async recordBattleResult(userId, result, turnCount, opponentId) {
     return this.request(`/users/${userId}/battle/result`, {
       method: 'POST',

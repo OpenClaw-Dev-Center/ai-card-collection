@@ -196,6 +196,16 @@ export function Dashboard({
                   <span className="text-xs bg-gray-600/60 px-2 py-0.5 rounded-full">Lv 5</span>
                 </div>
               )}
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onNavigate('boss-fight')}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 via-orange-600 to-yellow-500 rounded-xl font-bold shadow-lg text-black"
+              >
+                <CrownIcon className="w-5 h-5" />
+                Hourly Boss
+              </motion.button>
             </div>
           </div>
           <div className="absolute top-4 right-4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />

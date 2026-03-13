@@ -19,6 +19,7 @@ import { PackOpening } from './components/PackOpening';
 import { GameMode } from './components/GameMode';
 import { DeckBattle } from './components/DeckBattle';
 import { TowerDefense } from './components/TowerDefense';
+import { BossFight } from './components/BossFight';
 import { Leaderboard } from './components/Leaderboard';
 import { ExperienceRoad } from './components/ExperienceRoad';
 import { TypeChart } from './components/TypeChart';
@@ -247,6 +248,19 @@ function App() {
             }}
             onBack={() => setView('dashboard')}
             onXpGain={addXp}
+          />
+        );
+      case 'boss-fight':
+        return (
+          <BossFight
+            user={user}
+            onBack={() => setView('dashboard')}
+            onProfileSync={(profile) => {
+              loadFromBackend(profile);
+              if (profile?.collection && user?.id) {
+                localStorage.setItem(`collection_${user.id}`, JSON.stringify(profile.collection));
+              }
+            }}
           />
         );
       case 'deck-battle':

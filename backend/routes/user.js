@@ -8,6 +8,149 @@ import {
   VERSION_PROGRESSION,
   getTotalDupesNeededToMax,
 } from '../gameData.js';
+import { getBossForHour, getHourPeriodStart } from '../bossData.js';
+
+const RARITY_ORDER = { COMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5 };
+
+function clone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function buildBossRaidState(now = new Date()) {
+  const boss = getBossForHour(now);
+  return {
+    periodStart: getHourPeriodStart(now),
+    bossId: boss.id,
+    bossName: boss.name,
+    bossIcon: boss.icon,
+    bossColor: boss.color,
+    mechanic: boss.mechanic,
+    gimmick: boss.gimmick,
+    vulnerable: boss.vulnerable,
+    resistant: boss.resistant,
+    maxHp: boss.maxHp,
+    hp: boss.maxHp,
+    attemptsUsed: 0,
+    maxAttempts: 5,
+    usedCardIds: [],
+    defeated: false,
+    rewardGranted: false,
+  };
+}
+
+function normalizeBossRaid(stats, now = new Date()) {
+  const normalized = clone(stats || {});
+  const currentPeriod = getHourPeriodStart(now);
+  if (!normalized.bossRaid || normalized.bossRaid.periodStart !== currentPeriod) {
+    normalized.bossRaid = buildBossRaidState(now);
+  }
+  return normalized;
+}
+
+function getCardByIdFromCollection(collection, id) {
+  return collection.find(c => c.id === id);
+}
+
+function strategicBossDamage(deckCards, raidState) {
+  const providerCounts = {};
+  deckCards.forEach(c => {
+    providerCounts[c.provider] = (providerCounts[c.provider] || 0) + 1;
+  });
+  const uniqueProviders = Object.keys(providerCounts).length;
+  const tacticalNotes = [];
+
+  let teamMult = 1;
+  if (uniqueProviders >= 5) {
+    teamMult *= 1.35;
+    tacticalNotes.push('Perfect provider spread: +35% team damage');
+  } else if (uniqueProviders === 4) {
+    teamMult *= 1.2;
+    tacticalNotes.push('Strong provider spread: +20% team damage');
+  } else if (uniqueProviders <= 2) {
+    teamMult *= 0.78;
+    tacticalNotes.push('Low provider diversity: -22% team damage');
+  }
+
+  const hasControlCard = deckCards.some(c => (c.stats?.intelligence || 0) >= 92);
+  const hasTempoCard = deckCards.some(c => (c.stats?.speed || 0) >= 90);
+  if (hasControlCard && hasTempoCard) {
+    teamMult *= 1.12;
+    tacticalNotes.push('Control + tempo pair found: +12% team damage');
+  }
+
+  // Boss gets more hostile after each failed attempt
+  const enrageMult = Math.max(0.65, 1 - raidState.attemptsUsed * 0.08);
+  if (raidState.attemptsUsed > 0) {
+    tacticalNotes.push(`Boss enrage x${enrageMult.toFixed(2)} due to prior attempts`);
+  }
+
+  let total = 0;
+  const perCard = [];
+  const providerSeen = {};
+
+  deckCards.forEach((card, idx) => {
+    const stats = card.stats || {};
+    const rarityVal = RARITY_ORDER[card.rarity] || 1;
+    const power = stats.power || 0;
+    const speed = stats.speed || 0;
+    const intelligence = stats.intelligence || 0;
+    const creativity = stats.creativity || 0;
+
+    let dmg = power * 0.75 + intelligence * 0.52 + creativity * 0.40 + speed * 0.33;
+
+    // Provider weakness / resistance
+    let providerMult = 1;
+    if ((raidState.vulnerable || []).includes(card.provider)) providerMult += 0.34;
+    if ((raidState.resistant || []).includes(card.provider)) providerMult -= 0.3;
+
+    // Duplicate provider diminishing returns
+    const sameProviderCount = providerCounts[card.provider] || 1;
+    const duplicatePenalty = Math.max(0.52, 1 - (sameProviderCount - 1) * 0.18);
+
+    // Boss unique mechanics
+    let mechanicMult = 1;
+    if (raidState.mechanic === 'adaptive_matrix') {
+      providerSeen[card.provider] = (providerSeen[card.provider] || 0) + 1;
+      if (providerSeen[card.provider] > 1) mechanicMult *= Math.max(0.55, 1 - (providerSeen[card.provider] - 1) * 0.25);
+    }
+    if (raidState.mechanic === 'reflective_aegis') {
+      if (power > intelligence + 8) mechanicMult *= 0.68;
+      if (intelligence >= 90) mechanicMult *= 1.12;
+    }
+    if (raidState.mechanic === 'chrono_lock') {
+      if (idx < 2 && speed < 86) mechanicMult *= 0.6;
+      if (speed >= 92) mechanicMult *= 1.1;
+    }
+    if (raidState.mechanic === 'entropy_field') {
+      if (uniqueProviders < 3) mechanicMult *= 0.62;
+      if (uniqueProviders >= 4) mechanicMult *= 1.1;
+    }
+    if (raidState.mechanic === 'quantum_veto') {
+      if (idx % 2 === 1 && creativity < 90) mechanicMult *= 0.7;
+      if (creativity >= 95) mechanicMult *= 1.08;
+    }
+    if (raidState.mechanic === 'hunter_protocol') {
+      if (rarityVal >= 4) mechanicMult *= 0.8;
+      if (rarityVal <= 2) mechanicMult *= 1.12;
+    }
+
+    const final = Math.floor(dmg * providerMult * duplicatePenalty * mechanicMult * teamMult * enrageMult);
+    const clamped = Math.max(40, final);
+    total += clamped;
+    perCard.push({
+      cardId: card.id,
+      name: card.name,
+      provider: card.provider,
+      damage: clamped,
+    });
+  });
+
+  // Armor applies after strategic calculations.
+  total = Math.max(120, Math.floor(total * (1 - (raidState.armor || 0.2))));
+  if ((raidState.armor || 0) > 0) tacticalNotes.push(`Boss armor reduced total damage by ${Math.round((raidState.armor || 0) * 100)}%`);
+
+  return { totalDamage: total, perCard, tacticalNotes };
+}
 
 const router = Router();
 
@@ -299,6 +442,178 @@ router.post('/:userId/packs/open', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Open pack error:', err);
     return res.status(500).json({ error: 'Failed to open pack' });
+  }
+});
+
+// Get current hourly boss state.
+router.get('/:userId/boss/current', authenticate, async (req, res) => {
+  try {
+    const { userId } = req;
+    if (userId.toString() !== req.params.userId) {
+      return res.status(403).json({ error: 'Can only access your own boss state' });
+    }
+
+    let profileResult = await query(
+      'SELECT credits, prestige_crystals, packs, collection, deck_presets, stats FROM user_profiles WHERE user_id = $1',
+      [userId]
+    );
+    if (profileResult.rows.length === 0) {
+      await query(
+        `INSERT INTO user_profiles (user_id, credits, packs, collection, stats)
+         VALUES ($1, 0, '{"basic": 1}'::jsonb, '[]'::jsonb, '{"wins": 0, "losses": 0, "totalBattles": 0, "playtimeHours": 0}'::jsonb)`,
+        [userId]
+      );
+      profileResult = await query(
+        'SELECT credits, prestige_crystals, packs, collection, deck_presets, stats FROM user_profiles WHERE user_id = $1',
+        [userId]
+      );
+    }
+
+    const row = profileResult.rows[0];
+    const normalizedStats = normalizeBossRaid(row.stats || {}, new Date());
+
+    await query(
+      'UPDATE user_profiles SET stats = $1::jsonb, updated_at = NOW() WHERE user_id = $2',
+      [JSON.stringify(normalizedStats), userId]
+    );
+
+    return res.json({
+      bossRaid: normalizedStats.bossRaid,
+      profile: {
+        credits: row.credits,
+        prestigeCrystals: row.prestige_crystals,
+        packs: row.packs,
+        collection: row.collection,
+        deckPresets: row.deck_presets,
+        stats: normalizedStats,
+      }
+    });
+  } catch (err) {
+    console.error('Get current boss error:', err);
+    return res.status(500).json({ error: 'Failed to fetch hourly boss state' });
+  }
+});
+
+// Attack current hourly boss with a selected deck (max 5 cards, max 5 attempts total per hour).
+router.post('/:userId/boss/attack', authenticate, async (req, res) => {
+  try {
+    const { userId } = req;
+    if (userId.toString() !== req.params.userId) {
+      return res.status(403).json({ error: 'Can only attack boss for your own profile' });
+    }
+
+    const deckCardIdsRaw = Array.isArray(req.body.deckCardIds) ? req.body.deckCardIds : [];
+    const deckCardIds = [...new Set(deckCardIdsRaw.map(String))];
+    if (deckCardIds.length < 2 || deckCardIds.length > 5) {
+      return res.status(400).json({ error: 'Deck must contain between 2 and 5 unique cards' });
+    }
+
+    const profileResult = await query(
+      'SELECT credits, prestige_crystals, packs, collection, deck_presets, stats FROM user_profiles WHERE user_id = $1',
+      [userId]
+    );
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const row = profileResult.rows[0];
+    const collection = Array.isArray(row.collection) ? row.collection : [];
+    const normalizedStats = normalizeBossRaid(row.stats || {}, new Date());
+    const raid = normalizedStats.bossRaid;
+
+    if (raid.defeated) {
+      return res.status(400).json({ error: 'Boss already defeated this hour', bossRaid: raid });
+    }
+    if (raid.attemptsUsed >= raid.maxAttempts) {
+      return res.status(400).json({ error: 'No attempts remaining for this hour', bossRaid: raid });
+    }
+
+    const alreadyUsed = new Set(raid.usedCardIds || []);
+    const invalidUsed = deckCardIds.filter(id => alreadyUsed.has(id));
+    if (invalidUsed.length > 0) {
+      return res.status(400).json({ error: 'Deck contains cards already used this hour', cardIds: invalidUsed });
+    }
+
+    const deckCards = deckCardIds.map(id => getCardByIdFromCollection(collection, id)).filter(Boolean);
+    if (deckCards.length !== deckCardIds.length) {
+      return res.status(400).json({ error: 'One or more selected cards are not owned by this user' });
+    }
+
+    const hpBefore = raid.hp;
+    const sim = strategicBossDamage(deckCards, raid);
+    const hpAfter = Math.max(0, hpBefore - sim.totalDamage);
+
+    raid.hp = hpAfter;
+    raid.attemptsUsed += 1;
+    raid.usedCardIds = [...(raid.usedCardIds || []), ...deckCardIds];
+    raid.defeated = hpAfter <= 0;
+
+    let credits = Number(row.credits || 0);
+    let prestigeCrystals = Number(row.prestige_crystals || 0);
+    const packs = { ...(row.packs || {}) };
+    const rewards = {
+      credits: 0,
+      prestigeCrystals: 0,
+      packs: {},
+    };
+
+    if (raid.defeated && !raid.rewardGranted) {
+      const attemptBonus = Math.max(1, 6 - raid.attemptsUsed); // faster clear => better reward
+      rewards.credits = 12000 + attemptBonus * 2500;
+      rewards.prestigeCrystals = 150 + attemptBonus * 60;
+      rewards.packs = {
+        mythic_pack: attemptBonus >= 4 ? 2 : 1,
+        elite_pack: 2,
+        legendary: 1,
+      };
+
+      credits += rewards.credits;
+      prestigeCrystals += rewards.prestigeCrystals;
+      for (const [k, v] of Object.entries(rewards.packs)) {
+        packs[k] = (packs[k] || 0) + v;
+      }
+      raid.rewardGranted = true;
+      normalizedStats.bossRaidWins = (normalizedStats.bossRaidWins || 0) + 1;
+    }
+
+    normalizedStats.bossRaid = raid;
+    const updated = await query(
+      `UPDATE user_profiles
+       SET credits = $1,
+           prestige_crystals = $2,
+           packs = $3::jsonb,
+           stats = $4::jsonb,
+           updated_at = NOW()
+       WHERE user_id = $5
+       RETURNING credits, prestige_crystals, packs, collection, deck_presets, stats`,
+      [credits, prestigeCrystals, JSON.stringify(packs), JSON.stringify(normalizedStats), userId]
+    );
+
+    return res.json({
+      attemptReport: {
+        attemptNumber: raid.attemptsUsed,
+        maxAttempts: raid.maxAttempts,
+        damage: sim.totalDamage,
+        hpBefore,
+        hpAfter,
+        consumedCardIds: deckCardIds,
+        perCard: sim.perCard,
+        tacticalNotes: sim.tacticalNotes,
+      },
+      bossRaid: raid,
+      rewards,
+      profile: {
+        credits: updated.rows[0].credits,
+        prestigeCrystals: updated.rows[0].prestige_crystals,
+        packs: updated.rows[0].packs,
+        collection: updated.rows[0].collection,
+        deckPresets: updated.rows[0].deck_presets,
+        stats: updated.rows[0].stats,
+      }
+    });
+  } catch (err) {
+    console.error('Boss attack error:', err);
+    return res.status(500).json({ error: 'Failed to process boss attack' });
   }
 });
 

@@ -339,6 +339,81 @@ router.get('/:userId', authenticate, async (req, res) => {
   }
 });
 
+// Sync progression state (xp + unlocks + claimed levels) using guarded server merge.
+router.post('/:userId/progression/sync', authenticate, async (req, res) => {
+  try {
+    const { userId } = req;
+    if (userId.toString() !== req.params.userId) {
+      return res.status(403).json({ error: 'Can only sync your own progression' });
+    }
+
+    const incomingXpRaw = req.body?.xp;
+    const incomingUnlocksRaw = req.body?.unlockedFeatures;
+    const incomingClaimedRaw = req.body?.claimedLevels;
+
+    if (incomingXpRaw === undefined && incomingUnlocksRaw === undefined && incomingClaimedRaw === undefined) {
+      return res.status(400).json({ error: 'No progression fields provided' });
+    }
+
+    const profileResult = await query(
+      'SELECT stats FROM user_profiles WHERE user_id = $1',
+      [userId]
+    );
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const stats = { ...(profileResult.rows[0].stats || {}) };
+    const currentXp = Number(stats.xp || 0);
+
+    if (incomingXpRaw !== undefined) {
+      const incomingXp = Number(incomingXpRaw);
+      if (!Number.isFinite(incomingXp) || incomingXp < 0) {
+        return res.status(400).json({ error: 'Invalid xp value' });
+      }
+
+      // Monotonic + bounded jump to reduce obvious tampering while allowing legit sessions.
+      const maxForwardJump = 250000;
+      if (incomingXp < currentXp) {
+        return res.status(400).json({ error: 'xp cannot decrease' });
+      }
+      if (incomingXp - currentXp > maxForwardJump) {
+        return res.status(400).json({ error: 'xp jump too large' });
+      }
+      stats.xp = incomingXp;
+    }
+
+    if (incomingUnlocksRaw !== undefined) {
+      if (!Array.isArray(incomingUnlocksRaw) || incomingUnlocksRaw.length > 100) {
+        return res.status(400).json({ error: 'Invalid unlockedFeatures' });
+      }
+      stats.unlockedFeatures = [...new Set(incomingUnlocksRaw.map(v => String(v).trim()).filter(Boolean))];
+    }
+
+    if (incomingClaimedRaw !== undefined) {
+      if (!Array.isArray(incomingClaimedRaw) || incomingClaimedRaw.length > 200) {
+        return res.status(400).json({ error: 'Invalid claimedLevels' });
+      }
+      const cleanClaimed = [...new Set(incomingClaimedRaw.map(v => Number(v)).filter(v => Number.isInteger(v) && v >= 1 && v <= 999))]
+        .sort((a, b) => a - b);
+      stats.claimedLevels = cleanClaimed;
+    }
+
+    const updated = await query(
+      'UPDATE user_profiles SET stats = $1::jsonb, updated_at = NOW() WHERE user_id = $2 RETURNING stats',
+      [JSON.stringify(stats), userId]
+    );
+
+    return res.json({
+      message: 'Progression synced',
+      stats: updated.rows[0].stats,
+    });
+  } catch (err) {
+    console.error('Progression sync error:', err);
+    return res.status(500).json({ error: 'Failed to sync progression' });
+  }
+});
+
 // Update user profile (currency, packs, collection)
 router.put('/:userId', authenticate, async (req, res) => {
   try {

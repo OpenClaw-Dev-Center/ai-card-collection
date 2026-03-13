@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { levelFromXp, xpToNextLevel, xpForLevel, LEVEL_REWARDS } from '../data/cards';
+import { api } from '../services/api';
 
 function getUserKey(user) {
   // Accept either string username or user object with username
@@ -84,6 +85,9 @@ export function useGame(user) {
     const key = getUserKey(user);
     if (key) {
       localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
+      if (user?.id) {
+        api.syncProgression(user.id, { xp: newXp }).catch(() => {});
+      }
     }
     if (newLevel > prevLevel) {
       const newUnlocks = [...unlockedFeatures];
@@ -120,6 +124,14 @@ export function useGame(user) {
     const newClaimed = [...claimedLevels, rewardLevel];
     setClaimedLevels(newClaimed);
     if (key) localStorage.setItem(`claimedLevels_${key}`, JSON.stringify(newClaimed));
+    if (user?.id) {
+      const syncPayload = {
+        xp,
+        unlockedFeatures,
+        claimedLevels: newClaimed,
+      };
+      api.syncProgression(user.id, syncPayload).catch(() => {});
+    }
     return true;
   };
 
@@ -130,15 +142,31 @@ export function useGame(user) {
     const newCurrency = profile.credits ?? currency;
     const newPacks = profile.packs ? { basic: 0, premium: 0, mega: 0, legendary: 0, ...profile.packs } : packs;
     const newCrystals = profile.prestigeCrystals ?? prestigeCrystals;
-    const newXp = profile.stats?.xp ?? xp;
+    const backendXp = Number(profile.stats?.xp ?? 0);
+    const newXp = Math.max(backendXp, Number(xp || 0));
+    const backendUnlocks = Array.isArray(profile.stats?.unlockedFeatures) ? profile.stats.unlockedFeatures : null;
+    const backendClaimed = Array.isArray(profile.stats?.claimedLevels) ? profile.stats.claimedLevels : null;
     setCurrency(newCurrency);
     setPacks(newPacks);
     setPrestigeCrystals(newCrystals);
     setXp(newXp);
+    if (backendUnlocks) setUnlockedFeatures(backendUnlocks);
+    if (backendClaimed) setClaimedLevels(backendClaimed);
     localStorage.setItem(`currency_${key}`, JSON.stringify(newCurrency));
     localStorage.setItem(`packs_${key}`, JSON.stringify(newPacks));
     localStorage.setItem(`prestige_${key}`, JSON.stringify(newCrystals));
     localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
+    if (backendUnlocks) localStorage.setItem(`unlocks_${key}`, JSON.stringify(backendUnlocks));
+    if (backendClaimed) localStorage.setItem(`claimedLevels_${key}`, JSON.stringify(backendClaimed));
+
+    // Heal stale backend progression forward once per sync when local is ahead.
+    if (user?.id && backendXp < newXp) {
+      api.syncProgression(user.id, {
+        xp: newXp,
+        unlockedFeatures: backendUnlocks || unlockedFeatures,
+        claimedLevels: backendClaimed || claimedLevels,
+      }).catch(() => {});
+    }
     // Restore wins/playtime into the 'users' key that Dashboard reads
     if (profile.stats) {
       const users = JSON.parse(localStorage.getItem('users') || '{}');

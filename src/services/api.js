@@ -73,6 +73,13 @@ class ApiClient {
     return this.request(`/users/${userId}`);
   }
 
+  async syncProgression(userId, payload) {
+    return this.request(`/users/${userId}/progression/sync`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
   async updateProfile(userId, updates) {
     return this.request(`/users/${userId}`, {
       method: 'PUT',

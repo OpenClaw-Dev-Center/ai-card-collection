@@ -80,6 +80,13 @@ class ApiClient {
     });
   }
 
+  async grantReward(userId, source, credits) {
+    return this.request(`/users/${userId}/rewards/grant`, {
+      method: 'POST',
+      body: JSON.stringify({ source, credits })
+    });
+  }
+
   async updateProfile(userId, updates) {
     return this.request(`/users/${userId}`, {
       method: 'PUT',

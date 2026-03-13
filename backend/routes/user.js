@@ -414,6 +414,62 @@ router.post('/:userId/progression/sync', authenticate, async (req, res) => {
   }
 });
 
+// Grant credits for completed game modes using a controlled backend path.
+router.post('/:userId/rewards/grant', authenticate, async (req, res) => {
+  try {
+    const { userId } = req;
+    if (userId.toString() !== req.params.userId) {
+      return res.status(403).json({ error: 'Can only grant rewards for your own profile' });
+    }
+
+    const source = String(req.body?.source || '').trim();
+    const creditsRaw = req.body?.credits;
+    const credits = Number(creditsRaw);
+
+    const MAX_REWARD_BY_SOURCE = {
+      'game-1v1': 20000,
+      'tower-defense': 50000,
+      'deck-battle': 20000,
+    };
+
+    if (!Object.prototype.hasOwnProperty.call(MAX_REWARD_BY_SOURCE, source)) {
+      return res.status(400).json({ error: 'Invalid reward source' });
+    }
+    if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_REWARD_BY_SOURCE[source]) {
+      return res.status(400).json({ error: 'Invalid credits amount for source' });
+    }
+
+    const result = await query(
+      `UPDATE user_profiles
+       SET credits = credits + $1,
+           updated_at = NOW()
+       WHERE user_id = $2
+       RETURNING credits, prestige_crystals, packs, collection, deck_presets, stats`,
+      [Math.floor(credits), userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      message: 'Reward granted',
+      profile: {
+        credits: row.credits,
+        prestigeCrystals: row.prestige_crystals,
+        packs: row.packs,
+        collection: row.collection,
+        deckPresets: row.deck_presets,
+        stats: row.stats,
+      }
+    });
+  } catch (err) {
+    console.error('Grant reward error:', err);
+    return res.status(500).json({ error: 'Failed to grant reward' });
+  }
+});
+
 // Update user profile (currency, packs, collection)
 router.put('/:userId', authenticate, async (req, res) => {
   try {

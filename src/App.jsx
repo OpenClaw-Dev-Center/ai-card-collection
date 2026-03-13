@@ -230,8 +230,19 @@ function App() {
           <GameMode
             user={user}
             currency={currency}
-            onComplete={(reward) => {
-              updateCurrency(reward);
+            onComplete={async (reward) => {
+              try {
+                if (user?.id && isOnline) {
+                  const res = await api.grantReward(user.id, 'game-1v1', reward);
+                  if (res?.profile) loadFromBackend(res.profile);
+                } else {
+                  updateCurrency(reward);
+                }
+              } catch (err) {
+                console.error('Failed to grant game reward:', err);
+                updateCurrency(reward);
+                setSyncError('Reward saved locally only');
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -242,8 +253,19 @@ function App() {
         return (
           <TowerDefense
             user={user}
-            onComplete={(reward) => {
-              updateCurrency(reward);
+            onComplete={async (reward) => {
+              try {
+                if (user?.id && isOnline) {
+                  const res = await api.grantReward(user.id, 'tower-defense', reward);
+                  if (res?.profile) loadFromBackend(res.profile);
+                } else {
+                  updateCurrency(reward);
+                }
+              } catch (err) {
+                console.error('Failed to grant tower defense reward:', err);
+                updateCurrency(reward);
+                setSyncError('Reward saved locally only');
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -267,8 +289,19 @@ function App() {
         return (
           <DeckBattle
             user={user}
-            onComplete={(reward) => {
-              updateCurrency(reward);
+            onComplete={async (reward) => {
+              try {
+                if (user?.id && isOnline) {
+                  const res = await api.grantReward(user.id, 'deck-battle', reward);
+                  if (res?.profile) loadFromBackend(res.profile);
+                } else {
+                  updateCurrency(reward);
+                }
+              } catch (err) {
+                console.error('Failed to grant deck battle reward:', err);
+                updateCurrency(reward);
+                setSyncError('Reward saved locally only');
+              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}

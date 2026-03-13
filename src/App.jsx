@@ -135,16 +135,29 @@ function App() {
     setOpeningPack(null);
     setView('dashboard');
 
-    if (finishing.fromStock) {
-      updatePacks(finishing.packKey, -1);
-    } else {
-      updateCurrency(-finishing.cost);
-    }
-
     // Save to backend if user is logged in and online
     if (user && user.id) {
       try {
-        // Update profile with new collection and crystals
+        // Backend-authoritative: open pack server-side and trust only returned state.
+        if (isOnline) {
+          const serverOpen = await api.openPack(user.id, finishing.packKey, finishing.fromStock);
+          const serverCards = serverOpen.cards || [];
+
+          // Keep local cache synced for collection-heavy UI reads.
+          const collectionKey = `collection_${user.id}`;
+          localStorage.setItem(collectionKey, JSON.stringify(serverOpen.profile?.collection || []));
+
+          // Apply authoritative profile to game state
+          if (serverOpen.profile) {
+            loadFromBackend(serverOpen.profile);
+          }
+
+          // Add XP for pack opening based on server-returned actual cards
+          addXp(serverCards.length * 10);
+          return;
+        }
+
+        // Offline fallback (local-only mode)
         const collectionKey = `collection_${user.id}`;
         const savedCollectionStr = localStorage.getItem(collectionKey) || '[]';
         const savedCollection = JSON.parse(savedCollectionStr);
@@ -154,18 +167,8 @@ function App() {
         if (crystalsEarned > 0) {
           updatePrestigeCrystals(crystalsEarned);
         }
-
-        if (isOnline) {
-          const newPacks = finishing.fromStock
-            ? { ...packs, [finishing.packKey]: Math.max(0, (packs[finishing.packKey] || 0) - 1) }
-            : packs;
-          await api.updateProfile(user.id, {
-            collection: updatedCollection,
-            packs: newPacks,
-            prestigeCrystals: prestigeCrystals + crystalsEarned,
-            credits: currency - (finishing.fromStock ? 0 : (finishing.cost || 0))
-          });
-        }
+        if (finishing.fromStock) updatePacks(finishing.packKey, -1);
+        else updateCurrency(-finishing.cost);
       } catch (err) {
         console.error('Failed to sync pack complete:', err);
         setSyncError('Changes saved locally only');
@@ -228,9 +231,6 @@ function App() {
             currency={currency}
             onComplete={(reward) => {
               updateCurrency(reward);
-              if (user && user.id && isOnline) {
-                api.recordBattleResult(user.id, 'win', 0, null);
-              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -243,9 +243,6 @@ function App() {
             user={user}
             onComplete={(reward) => {
               updateCurrency(reward);
-              if (user && user.id && isOnline) {
-                api.recordBattleResult(user.id, 'win', 0, null);
-              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}
@@ -258,9 +255,6 @@ function App() {
             user={user}
             onComplete={(reward) => {
               updateCurrency(reward);
-              if (user && user.id && isOnline) {
-                api.recordBattleResult(user.id, 'win', 0, null);
-              }
               setView('dashboard');
             }}
             onBack={() => setView('dashboard')}

@@ -80,6 +80,13 @@ class ApiClient {
     });
   }
 
+  async openPack(userId, packKey, fromStock) {
+    return this.request(`/users/${userId}/packs/open`, {
+      method: 'POST',
+      body: JSON.stringify({ packKey, fromStock })
+    });
+  }
+
   async recordBattleResult(userId, result, turnCount, opponentId) {
     return this.request(`/users/${userId}/battle/result`, {
       method: 'POST',

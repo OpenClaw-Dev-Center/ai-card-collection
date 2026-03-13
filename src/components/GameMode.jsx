@@ -391,7 +391,6 @@ export function GameMode({ user, currency, onComplete, onBack, onXpGain = () => 
       const base = win === 'player' ? 150 + newTurn * 30 : win === 'draw' ? 60 : 30;
       const earned = Math.floor(base * difficulty.rewardMult);
       setReward(earned);
-      if (user?.id) api.recordBattleResult(user.id, win === 'player' ? 'win' : 'loss', newTurn, null).catch(() => {});
     }
   }
 

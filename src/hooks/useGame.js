@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { levelFromXp, xpToNextLevel, xpForLevel, LEVEL_REWARDS } from '../data/cards';
-import { api } from '../services/api';
 
 function getUserKey(user) {
   // Accept either string username or user object with username
@@ -85,10 +84,6 @@ export function useGame(user) {
     const key = getUserKey(user);
     if (key) {
       localStorage.setItem(`xp_${key}`, JSON.stringify(newXp));
-      // Persist XP to backend (fire-and-forget)
-      if (user?.id) {
-        api.updateProfile(user.id, { stats: { xp: newXp } }).catch(() => {});
-      }
     }
     if (newLevel > prevLevel) {
       const newUnlocks = [...unlockedFeatures];
@@ -121,7 +116,6 @@ export function useGame(user) {
       const newCrystals = prestigeCrystals + reward.crystals;
       setPrestigeCrystals(newCrystals);
       if (key) localStorage.setItem(`prestige_${key}`, JSON.stringify(newCrystals));
-      if (user?.id) api.updateProfile(user.id, { prestigeCrystals: newCrystals }).catch(() => {});
     }
     const newClaimed = [...claimedLevels, rewardLevel];
     setClaimedLevels(newClaimed);

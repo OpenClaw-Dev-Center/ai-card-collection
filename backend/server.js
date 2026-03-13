@@ -24,7 +24,8 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || '10mb' }));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -35,6 +36,17 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+
+// Return a clear error for oversized payloads instead of a generic 500.
+app.use((err, req, res, next) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({
+      error: 'Payload too large',
+      details: 'Request body exceeds server limit. Try sending smaller updates.'
+    });
+  }
+  return next(err);
+});
 
 // In-memory stores (will be replaced with proper state management)
 const activeBattles = new Map(); // battleId -> battle state
